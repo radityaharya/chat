@@ -1,0 +1,23 @@
+# Database files
+*.db
+*.db-wal
+*.db-shm
+
+# Config files
+config.yaml
+
+# Environment files
+.env
+
+# Build artifacts
+gocheck
+/cmd/import/import
+
+# Import data files with secrets
+import.json
+
+# Data directory
+/data/
+node_modules
+
+tmp/

@@ -1,0 +1,13 @@
+*.db
+*.db-shm
+*.db-wal
+data/
+.git
+.gitignore
+*.md
+import.json
+gocheck
+probe
+main
+tmp/
+
