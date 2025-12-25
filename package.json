@@ -1,7 +1,9 @@
 {
-  "name": "gocheck",
+  "name": "chat",
   "private": true,
-  "workspaces": ["web"],
+  "workspaces": [
+    "web"
+  ],
   "scripts": {
     "dev": "concurrently -n backend,frontend -c blue,green \"pnpm run dev:backend\" \"pnpm run dev:frontend\"",
     "dev:backend": "air",

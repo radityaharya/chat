@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { useApiKey, useAddMessage, useUpdateMessage, type Message } from '@/store';
 import { getToolDefinitions, tools } from '@/tools';
@@ -25,7 +25,7 @@ export function useValidateAPIKey() {
       const response = await fetch(`${API_BASE_URL}/v1/validate`, {
         method: 'GET',
         headers: {
-          'Authorization': `Bearer ${apiKey}`,
+          'Authorization': `Bearer ${apiKey} `,
         },
       });
 
@@ -53,7 +53,7 @@ export function useModels() {
       const response = await fetch(`${API_BASE_URL}/v1/models`, {
         method: 'GET',
         headers: apiKey ? {
-          'Authorization': `Bearer ${apiKey}`,
+          'Authorization': `Bearer ${apiKey} `,
         } : {},
       });
 
@@ -84,6 +84,7 @@ export function useSendMessage() {
   const addMessage = useAddMessage();
   const updateMessage = useUpdateMessage();
   const [isStreaming, setIsStreaming] = useState(false);
+  const abortControllerRef = useRef<AbortController | null>(null);
 
   // Helper to execute tools
   const executeTool = async (name: string, args: any): Promise<any> => {
@@ -98,6 +99,15 @@ export function useSendMessage() {
     }
   };
 
+  // Function to stop streaming
+  const stopStreaming = () => {
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+      abortControllerRef.current = null;
+    }
+    setIsStreaming(false);
+  };
+
   const sendMessage = async (
     content: string,
     model: string,
@@ -109,6 +119,8 @@ export function useSendMessage() {
       throw new Error('No API key configured');
     }
 
+    // Create new AbortController for this request
+    abortControllerRef.current = new AbortController();
     setIsStreaming(true);
 
     // Filter out streaming flag from history and prepare initial messages
@@ -162,7 +174,7 @@ export function useSendMessage() {
 
     // 1. Add user message to UI
     const userMessage: Message = {
-      id: `user-${Date.now()}`,
+      id: `user - ${Date.now()} `,
       role: 'user',
       content,
       timestamp: Date.now(),
@@ -187,12 +199,11 @@ export function useSendMessage() {
     addMessage(assistantMessage);
 
     // 3. Main loop for handling tool calls and follow-ups
+    let assistantContent = '';
     try {
       let isDone = false;
       let iterationCount = 0;
       const MAX_ITERATIONS = 10; // Prevent infinite loops
-
-      let assistantContent = '';
 
       while (!isDone && iterationCount < MAX_ITERATIONS) {
         iterationCount++;
@@ -226,6 +237,7 @@ export function useSendMessage() {
             stream: true,
             tools: getToolDefinitions(),
           }),
+          signal: abortControllerRef.current?.signal,
         });
 
         if (!response.ok) {
@@ -312,12 +324,12 @@ export function useSendMessage() {
           let args = {};
           try { args = JSON.parse(tc.arguments); } catch (e) { }
           return {
-            type: `tool-${tc.name}`,
-            state: 'input-available', // Running
+            type: `tool-${tc.name}` as const,
+            state: 'input-available' as const,
             input: args,
             output: undefined,
             errorText: undefined,
-            toolCallId: tc.id, // Keep track of ID for updates
+            toolCallId: tc.id || '', // Ensure it's always a string
           } as ToolUIPart;
         });
 
@@ -391,13 +403,21 @@ export function useSendMessage() {
       }
 
     } catch (error) {
-      console.error('Error sending message:', error);
-      updateMessage(assistantMessageId, 'Error: Failed to get response', false);
+      // Check if error is due to abort
+      if (error instanceof Error && error.name === 'AbortError') {
+        console.log('Stream aborted by user');
+        // Don't show error message for user-initiated aborts
+        updateMessage(assistantMessageId, assistantContent, false);
+      } else {
+        console.error('Error sending message:', error);
+        updateMessage(assistantMessageId, 'Error: Failed to get response', false);
+      }
       throw error;
     } finally {
+      abortControllerRef.current = null;
       setIsStreaming(false);
     }
   };
 
-  return { sendMessage, isStreaming };
+  return { sendMessage, isStreaming, stopStreaming };
 }

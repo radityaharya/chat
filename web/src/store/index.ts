@@ -1,6 +1,5 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
-import { useShallow } from 'zustand/shallow';
 import { nanoid } from 'nanoid';
 import type { ToolUIPart } from 'ai';
 
@@ -196,7 +195,7 @@ export const useUIStore = create<UIState>()(
       setSelectedModel: (model) => set({ selectedModel: model }),
     }),
     {
-      name: 'gocheck-ui-store',
+      name: 'chat-ui-store',
       storage: createJSONStorage(() => localStorage),
       partialize: (state) => ({
         darkMode: state.darkMode,

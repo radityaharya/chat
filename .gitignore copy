@@ -10,7 +10,7 @@ config.yaml
 .env
 
 # Build artifacts
-gocheck
+chat
 /cmd/import/import
 
 # Import data files with secrets

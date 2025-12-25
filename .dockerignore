@@ -1,13 +1,29 @@
-*.db
-*.db-shm
-*.db-wal
-data/
+# Git
 .git
 .gitignore
-*.md
-import.json
-gocheck
-probe
-main
-tmp/
 
+# Docker
+docker-compose.yml
+Dockerfile
+.dockerignore
+
+# Build
+dist/
+build/
+web/dist/
+web/node_modules/
+node_modules/
+
+# Environment
+.env
+.env.*
+
+# IDE
+.idea/
+.vscode/
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*

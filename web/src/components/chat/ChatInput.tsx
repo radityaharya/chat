@@ -34,11 +34,9 @@ import {
   ModelSelectorItem,
   ModelSelectorList,
   ModelSelectorLogo,
-  ModelSelectorLogoGroup,
   ModelSelectorName,
   ModelSelectorTrigger,
 } from '@/components/ai-elements/model-selector';
-import { Button } from '@/components/ui/button';
 import {
   CheckIcon,
   Trash2,
@@ -68,6 +66,7 @@ interface ChatInputProps {
   queue?: QueueMessage[];
   onRemoveQueueItem?: (id: string) => void;
   status?: "submitted" | "streaming" | "ready" | "error";
+  onStop?: () => void;
 }
 
 // Helpers to parse model info for the UI
@@ -103,7 +102,8 @@ export function ChatInput({
   onSelectModel,
   queue = [],
   onRemoveQueueItem,
-  status = "ready"
+  status = "ready",
+  onStop
 }: ChatInputProps) {
   const [modelSelectorOpen, setModelSelectorOpen] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -221,7 +221,7 @@ export function ChatInput({
               <ModelSelectorTrigger asChild>
                 <PromptInputButton disabled={disabled} className="text-xs sm:text-sm h-7 sm:h-8 max-w-[140px] sm:max-w-none">
                   {selectedModelData?.chefSlug && (
-                    <ModelSelectorLogo provider={selectedModelData.chefSlug} className="flex-shrink-0" />
+                    <ModelSelectorLogo provider={selectedModelData.chefSlug} className="shrink-0" />
                   )}
                   <ModelSelectorName className="truncate">
                     {selectedModelData?.name || "Select Model"}
@@ -250,9 +250,9 @@ export function ChatInput({
                             <ModelSelectorLogo provider={slug} />
                             <ModelSelectorName className="text-xs sm:text-sm truncate">{m.id}</ModelSelectorName>
                             {selectedModel === m.id ? (
-                              <CheckIcon className="ml-auto size-4 flex-shrink-0" />
+                              <CheckIcon className="ml-auto size-4 shrink-0" />
                             ) : (
-                              <div className="ml-auto size-4 flex-shrink-0" />
+                              <div className="ml-auto size-4 shrink-0" />
                             )}
                           </ModelSelectorItem>
                         )
@@ -265,7 +265,7 @@ export function ChatInput({
           </PromptInputTools>
 
           <div className="flex items-center gap-2">
-            <PromptInputSubmit className="!h-7 sm:!h-8" disabled={disabled} status={status} />
+            <PromptInputSubmit className="h-7! sm:h-8!" disabled={disabled} status={status} onStop={onStop} />
           </div>
         </PromptInputFooter>
       </PromptInput>

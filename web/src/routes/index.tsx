@@ -59,8 +59,8 @@ function ChatPage() {
   const setActiveConversation = useSetActiveConversation();
   const setSystemPrompt = useSetSystemPrompt();
 
-  const { data: models, isLoading: isLoadingModels } = useModels();
-  const { sendMessage, isStreaming } = useSendMessage();
+  const { data: models, isLoading: _isLoadingModels } = useModels();
+  const { sendMessage, isStreaming, stopStreaming } = useSendMessage();
 
   // Mobile hooks
   useViewportHeight();
@@ -204,14 +204,14 @@ function ChatPage() {
 
       <div className="flex-1 flex flex-col min-w-0">
         {/* Header */}
-        <header className="bg-terminal-surface border-b border-terminal-border px-3 sm:px-4 py-2 sm:py-3 flex-shrink-0 z-10">
+        <header className="bg-terminal-surface border-b border-terminal-border px-3 sm:px-4 py-2 sm:py-3 shrink-0 z-10">
           <div className="flex items-center justify-between max-w-4xl mx-auto w-full">
             <div className="flex items-center gap-2 overflow-hidden min-w-0">
               <Button
                 variant="ghost"
                 size="icon-sm"
                 onClick={handleToggleSidebar}
-                className="flex-shrink-0 text-terminal-muted hover:text-terminal-text"
+                className="shrink-0 text-terminal-muted hover:text-terminal-text"
                 aria-label="Toggle sidebar"
               >
                 <PanelLeft className="size-4" />
@@ -221,7 +221,7 @@ function ChatPage() {
               </h1>
             </div>
 
-            <div className="flex items-center gap-1 sm:gap-2 flex-shrink-0">
+            <div className="flex items-center gap-1 sm:gap-2 shrink-0">
               <Button
                 variant="ghost"
                 size="icon-sm"
@@ -284,7 +284,7 @@ function ChatPage() {
         </Conversation>
 
         {/* Input Area */}
-        <footer className="bg-terminal-bg px-2 py-2 sm:px-4 sm:py-3 flex-shrink-0 safe-bottom z-10">
+        <footer className="bg-terminal-bg px-2 py-2 sm:px-4 sm:py-3 shrink-0 safe-bottom z-10">
           <div className="max-w-4xl mx-auto">
             <ChatInput
               onSend={handleSendMessage}
@@ -292,6 +292,7 @@ function ChatPage() {
               status={isStreaming ? 'streaming' : 'ready'}
               queue={queue}
               onRemoveQueueItem={handleRemoveQueueItem}
+              onStop={stopStreaming}
               placeholder={
                 !selectedModel
                   ? 'Select a model first...'
