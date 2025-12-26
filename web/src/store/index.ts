@@ -10,6 +10,12 @@ interface Message {
   timestamp: number;
   streaming?: boolean;
   parts?: ToolUIPart[];
+  images?: {
+    type: 'image_url';
+    image_url: {
+      url: string;
+    };
+  }[];
   attachments?: {
     url: string;
     contentType: string;
@@ -54,7 +60,7 @@ interface UIState {
   addMessage: (message: Message) => void;
   deleteMessage: (id: string) => void;
   setMessages: (messages: Message[]) => void;
-  updateMessage: (id: string, content: string, streaming?: boolean, parts?: ToolUIPart[]) => void;
+  updateMessage: (id: string, content: string, streaming?: boolean, parts?: ToolUIPart[], images?: any[]) => void;
   clearMessages: () => void;
   createCheckpoint: (messageId: string) => void;
   restoreCheckpoint: (checkpointId: string) => void;
@@ -164,7 +170,7 @@ export const useUIStore = create<UIState>()(
         };
       }),
 
-      updateMessage: (id, content, streaming, parts) =>
+      updateMessage: (id, content, streaming, parts, images) =>
         set((state) => {
           const activeId = state.activeConversationId;
           if (!activeId || !state.conversations[activeId]) return {};
@@ -188,11 +194,18 @@ export const useUIStore = create<UIState>()(
               newParts = nextParts;
             }
 
+            // Update images
+            let newImages = msg.images || [];
+            if (images) {
+              newImages = images;
+            }
+
             return {
               ...msg,
               content,
               ...(streaming !== undefined && { streaming }),
-              parts: newParts
+              parts: newParts,
+              images: newImages.length > 0 ? newImages : undefined,
             };
           });
           chat.updatedAt = Date.now();

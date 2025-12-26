@@ -9,6 +9,7 @@ import {
   MessageActions,
   MessageAction,
 } from '@/components/ai-elements/message';
+import { Image } from '@/components/ai-elements/image';
 import {
   Reasoning,
   ReasoningContent,
@@ -77,6 +78,7 @@ export function ChatMessage({ message, onRegenerate, onDelete, onCheckpoint, onF
   const parsed = parseThinkingTags(message.content);
   const hasThinking = parsed.thinking !== null;
   const hasTools = message.parts && message.parts.length > 0;
+  const hasImages = message.images && message.images.length > 0;
 
   // We are streaming the thought if the message is streaming AND we are inside an unclosed think block
   const isStreamingThought = message.streaming && parsed.isThinking;
@@ -123,10 +125,24 @@ export function ChatMessage({ message, onRegenerate, onDelete, onCheckpoint, onF
             })}
           </div>
         )}
-        {(parsed.response || (!showLoading && !hasTools)) && (
+        {(parsed.response || (!showLoading && !hasTools && !hasImages)) && (
           <MessageResponse>
-            {parsed.response || ((!message.streaming && !hasTools) ? 'No response' : '')}
+            {parsed.response || ((!message.streaming && !hasTools && !hasImages) ? 'No response' : '')}
           </MessageResponse>
+        )}
+        {message.images && message.images.length > 0 && (
+          <div className="flex flex-col gap-2 my-2">
+            {message.images.map((img, i) => (
+              <Image
+                key={i}
+                url={img.image_url.url}
+                // Pass dummy values to satisfy potentially required props if strict
+                base64=""
+                mediaType="image/png"
+                uint8Array={new Uint8Array()}
+              />
+            ))}
+          </div>
         )}
         {showLoading && (
           <div className="flex items-center gap-2 text-muted-foreground text-sm">

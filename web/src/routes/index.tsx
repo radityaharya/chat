@@ -376,7 +376,7 @@ function ChatPage() {
       </div>
 
       <Dialog open={systemPromptOpen} onOpenChange={setSystemPromptOpen}>
-        <DialogContent className="sm:max-w-[500px]">
+        <DialogContent className="sm:max-w-[500px] max-h-[85vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>System Prompt</DialogTitle>
             <DialogDescription>

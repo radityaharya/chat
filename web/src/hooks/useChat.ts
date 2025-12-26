@@ -123,6 +123,7 @@ export function useSendMessage() {
       let assistantReasoning = '';
       let isDone = false;
       let iterationCount = 0;
+      let allImages: any[] = [];
       const MAX_ITERATIONS = 10;
 
       // Helper to construct display content with reasoning
@@ -170,6 +171,13 @@ export function useSendMessage() {
           arguments: string
         }> = {};
 
+        let imageCalls: Record<number, {
+          type: 'image_url',
+          image_url: {
+            url: string
+          }
+        }> = {};
+
         while (true) {
           const { done, value } = await reader.read();
           if (done) break;
@@ -200,8 +208,42 @@ export function useSendMessage() {
                 shouldUpdate = true;
               }
 
+              if (delta?.images) {
+                for (const img of delta.images) {
+                  const index = img.index || 0;
+                  if (!imageCalls[index]) {
+                    imageCalls[index] = {
+                      type: 'image_url',
+                      image_url: { url: '' }
+                    };
+                  }
+                  if (img.image_url?.url) {
+                    const chunk = img.image_url.url;
+                    const trimmedChunk = chunk.trimStart();
+                    // If the chunk starts with 'data:', it's likely a full URL or a restart.
+                    // Also check if the chunk contains a data URI definition that might be preceded by other chars
+                    if (
+                      (trimmedChunk.startsWith('data:') || chunk.indexOf('data:image/') !== -1) &&
+                      imageCalls[index].image_url.url.length > 0
+                    ) {
+                      // If we find a new data header, we assume it's a replacement/refresh
+                      // We take the part starting from data: if it was in the middle
+                      const dataIndex = chunk.indexOf('data:image/');
+                      if (dataIndex !== -1) {
+                        imageCalls[index].image_url.url = chunk.substring(dataIndex);
+                      } else {
+                        imageCalls[index].image_url.url = trimmedChunk;
+                      }
+                    } else {
+                      imageCalls[index].image_url.url += chunk;
+                    }
+                  }
+                }
+                shouldUpdate = true;
+              }
+
               if (shouldUpdate) {
-                updateMessage(assistantMessageId, getFullContent(), true);
+                updateMessage(assistantMessageId, getFullContent(), true, undefined, [...allImages, ...Object.values(imageCalls)]);
               }
 
               if (delta?.tool_calls) {
@@ -222,10 +264,12 @@ export function useSendMessage() {
         }
 
         const finalToolCalls = Object.values(toolCalls);
+        const finalImages = Object.values(imageCalls);
+        allImages = [...allImages, ...finalImages];
 
         if (finalToolCalls.length === 0) {
           isDone = true;
-          updateMessage(assistantMessageId, getFullContent(), false);
+          updateMessage(assistantMessageId, getFullContent(), false, undefined, allImages);
           break;
         }
 
@@ -243,7 +287,7 @@ export function useSendMessage() {
           } as ToolUIPart;
         });
 
-        updateMessage(assistantMessageId, getFullContent(), true, toolPartsForUI);
+        updateMessage(assistantMessageId, getFullContent(), true, toolPartsForUI, allImages);
 
         apiMessages.push({
           role: 'assistant',
@@ -282,7 +326,7 @@ export function useSendMessage() {
           toolPartsForUI[index].output = result;
           if (isError) toolPartsForUI[index].errorText = JSON.stringify(result.error);
 
-          updateMessage(assistantMessageId, getFullContent(), true, [...toolPartsForUI]);
+          updateMessage(assistantMessageId, getFullContent(), true, [...toolPartsForUI], allImages);
 
           return {
             tool_call_id: tc.id,
