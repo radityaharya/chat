@@ -5,6 +5,7 @@ import {
   useSetApiKey,
   useMessages,
   useClearMessages,
+  useDeleteMessage,
   useSelectedModel,
   useSetSelectedModel,
   useSystemPrompt,
@@ -50,6 +51,7 @@ function ChatPage() {
   const setApiKey = useSetApiKey();
   const messages = useMessages();
   const clearMessages = useClearMessages();
+  const deleteMessage = useDeleteMessage();
   const selectedModel = useSelectedModel();
   const setSelectedModel = useSetSelectedModel();
 
@@ -60,7 +62,7 @@ function ChatPage() {
   const setSystemPrompt = useSetSystemPrompt();
 
   const { data: models, isLoading: _isLoadingModels } = useModels();
-  const { sendMessage, isStreaming, stopStreaming } = useSendMessage();
+  const { sendMessage, regenerate, isStreaming, stopStreaming } = useSendMessage();
 
   // Mobile hooks
   useViewportHeight();
@@ -158,6 +160,24 @@ function ChatPage() {
 
   const handleRemoveQueueItem = (id: string) => {
     setQueue((prev) => prev.filter((item) => item.id !== id));
+  };
+
+  const handleRegenerate = async (id: string) => {
+    if (!selectedModel) {
+      setModelAlertOpen(true);
+      return;
+    }
+    if (isStreaming) return;
+
+    try {
+      await regenerate(id, selectedModel, messages, systemPrompt);
+    } catch (error) {
+      console.error('Failed to regenerate:', error);
+    }
+  };
+
+  const handleDeleteMessage = (id: string) => {
+    deleteMessage(id);
   };
 
   const handleLogout = () => {
@@ -276,7 +296,12 @@ function ChatPage() {
               />
             ) : (
               messages.map((message) => (
-                <ChatMessage key={message.id} message={message} />
+                <ChatMessage
+                  key={message.id}
+                  message={message}
+                  onRegenerate={handleRegenerate}
+                  onDelete={handleDeleteMessage}
+                />
               ))
             )}
           </ConversationContent>

@@ -1,10 +1,13 @@
 
+import { useState } from 'react';
 import {
   Message,
   MessageAttachment,
   MessageAttachments,
   MessageContent,
   MessageResponse,
+  MessageActions,
+  MessageAction,
 } from '@/components/ai-elements/message';
 import {
   Reasoning,
@@ -19,10 +22,19 @@ import {
   ToolOutput,
 } from '@/components/ai-elements/tool';
 import type { Message as StoreMessage } from '@/store';
-import { Loader2Icon } from 'lucide-react';
+import {
+  Loader2Icon,
+  Copy,
+  RefreshCw,
+  Trash2,
+  Check,
+} from 'lucide-react';
+import { cn } from '@/lib/utils';
 
 interface ChatMessageProps {
   message: StoreMessage;
+  onRegenerate?: (id: string) => void;
+  onDelete?: (id: string) => void;
 }
 
 interface ParsedContent {
@@ -56,7 +68,8 @@ function parseThinkingTags(content: string): ParsedContent {
 }
 
 
-export function ChatMessage({ message }: ChatMessageProps) {
+export function ChatMessage({ message, onRegenerate, onDelete }: ChatMessageProps) {
+  const [copied, setCopied] = useState(false);
   const parsed = parseThinkingTags(message.content);
   const hasThinking = parsed.thinking !== null;
   const hasTools = message.parts && message.parts.length > 0;
@@ -67,8 +80,14 @@ export function ChatMessage({ message }: ChatMessageProps) {
   // Show generic loading if streaming but no content yet (and not thinking and not using tools)
   const showLoading = message.streaming && !parsed.response && !hasThinking && !hasTools;
 
+  const handleCopy = () => {
+    navigator.clipboard.writeText(message.content);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
   return (
-    <Message from={message.role}>
+    <Message from={message.role} className="group/message">
       <MessageContent>
         {hasThinking && (
           <Reasoning isStreaming={isStreamingThought}>
@@ -127,6 +146,31 @@ export function ChatMessage({ message }: ChatMessageProps) {
           </MessageAttachments>
         )}
       </MessageContent>
+
+      {!message.streaming && (
+        <MessageActions
+          className={cn(
+            "opacity-0 group-hover/message:opacity-100 transition-opacity",
+            message.role === "user" && "justify-end"
+          )}
+        >
+          <MessageAction onClick={handleCopy} tooltip="Copy">
+            {copied ? <Check size={14} /> : <Copy size={14} />}
+          </MessageAction>
+
+          {message.role === 'assistant' && onRegenerate && (
+            <MessageAction onClick={() => onRegenerate(message.id)} tooltip="Regenerate">
+              <RefreshCw size={14} />
+            </MessageAction>
+          )}
+
+          {onDelete && (
+            <MessageAction onClick={() => onDelete(message.id)} tooltip="Delete">
+              <Trash2 size={14} />
+            </MessageAction>
+          )}
+        </MessageActions>
+      )}
     </Message>
   );
 }

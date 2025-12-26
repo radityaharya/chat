@@ -1,6 +1,6 @@
 import { useState, useRef } from 'react';
 import { useQuery, useMutation } from '@tanstack/react-query';
-import { useApiKey, useAddMessage, useUpdateMessage, type Message } from '@/store';
+import { useApiKey, useAddMessage, useUpdateMessage, type Message, useSetMessages } from '@/store';
 import { getToolDefinitions, tools } from '@/tools';
 import type { ToolUIPart } from 'ai';
 
@@ -83,6 +83,7 @@ export function useSendMessage() {
   const apiKey = useApiKey();
   const addMessage = useAddMessage();
   const updateMessage = useUpdateMessage();
+  const setMessages = useSetMessages();
   const [isStreaming, setIsStreaming] = useState(false);
   const abortControllerRef = useRef<AbortController | null>(null);
 
@@ -108,139 +109,35 @@ export function useSendMessage() {
     setIsStreaming(false);
   };
 
-  const sendMessage = async (
-    content: string,
+  const streamResponse = async (
+    apiMessages: any[],
     model: string,
-    conversationHistory: Message[],
-    systemPrompt?: string,
-    attachments?: File[]
+    assistantMessageId: string
   ) => {
     if (!apiKey) {
       throw new Error('No API key configured');
     }
 
-    // Create new AbortController for this request
-    abortControllerRef.current = new AbortController();
-    setIsStreaming(true);
-
-    // Filter out streaming flag from history and prepare initial messages
-    // We clone the history to avoid mutating the state directly and because we might append tool messages
-    let currentMessages = conversationHistory
-      .filter(m => !m.streaming)
-      .map(m => ({
-        role: m.role,
-        content: m.content as string | Array<any>,
-        // Add existing parts if any (though standard API might not expect them in this format,
-        // we usually reconstruct the 'conversation' for the API differently.
-        // For simplicity, we'll assume we just need role/content for the API history
-        // unless we need to persist tool calls history which is more complex.
-        // todo: properly format tool calls history for API if needed.
-        // For now, we'll stick to a simple chat history but we need to handle the new user message.
-      }));
-
-    // Add system prompt
-    if (systemPrompt && systemPrompt.trim()) {
-      currentMessages = [{ role: 'system', content: systemPrompt }, ...currentMessages];
-    }
-
-    // Process attachments for the NEW user message
-    const processedAttachments = attachments ? await Promise.all(
-      attachments.map(async (file) => ({
-        file,
-        url: await fileToBase64(file),
-        isImage: file.type.startsWith('image/')
-      }))
-    ) : [];
-
-    let apiContent: string | Array<any> = content;
-    const apiImages = processedAttachments
-      .filter(p => p.isImage)
-      .map(p => ({
-        type: 'image_url',
-        image_url: {
-          url: p.url,
-        },
-      }));
-
-    if (apiImages.length > 0) {
-      apiContent = [
-        { type: 'text', text: content },
-        ...apiImages,
-      ];
-    }
-
-    // Add the new user message to the API messages list
-    currentMessages.push({ role: 'user', content: apiContent });
-
-    // 1. Add user message to UI
-    const userMessage: Message = {
-      id: `user - ${Date.now()} `,
-      role: 'user',
-      content,
-      timestamp: Date.now(),
-      attachments: processedAttachments.map(p => ({
-        url: p.url,
-        contentType: p.file.type,
-        name: p.file.name
-      })),
-    };
-    addMessage(userMessage);
-
-    // 2. Add assistant placeholder
-    const assistantMessageId = `assistant-${Date.now()}`;
-    const assistantMessage: Message = {
-      id: assistantMessageId,
-      role: 'assistant',
-      content: '',
-      timestamp: Date.now(),
-      streaming: true,
-      parts: [],
-    };
-    addMessage(assistantMessage);
-
-    // 3. Main loop for handling tool calls and follow-ups
-    let assistantContent = '';
-    let assistantReasoning = ''; // Track reasoning across turns
-
-    // Helper to construct display content with reasoning
-    const getFullContent = () => {
-      if (assistantReasoning) {
-        // If we have content, close the think tag. If not, leaving it open keeps it in "thinking" state.
-        // Actually for consistent UI parsing, we should close it if we are about to append content.
-        // Or if we return to the UI, unclosed tag is fine?
-        // Let's stick to the logic:
-        if (assistantContent) {
-          return `<think>${assistantReasoning}</think>${assistantContent}`;
-        }
-        return `<think>${assistantReasoning}`;
-      }
-      return assistantContent;
-    };
-
     try {
+      let assistantContent = '';
+      let assistantReasoning = '';
       let isDone = false;
       let iterationCount = 0;
-      const MAX_ITERATIONS = 10; // Prevent infinite loops
+      const MAX_ITERATIONS = 10;
+
+      // Helper to construct display content with reasoning
+      const getFullContent = () => {
+        if (assistantReasoning) {
+          if (assistantContent) {
+            return `<think>${assistantReasoning}</think>${assistantContent}`;
+          }
+          return `<think>${assistantReasoning}`;
+        }
+        return assistantContent;
+      };
 
       while (!isDone && iterationCount < MAX_ITERATIONS) {
         iterationCount++;
-
-        // Reset assistant content for this turn if we are doing a new request? 
-        // No, typically we accumulate content from the *assistant* message across turns if it's the same message ID?
-        // Actually, if we are looping, we are sending tool outputs BACK to the LLM, and getting a NEW response.
-        // The previous response was just tool calls.
-        // So `assistantContent` should probably be reset for the *new* response or we should be appending?
-        // Usually, the flow is:
-        // 1. User: "Time?"
-        // 2. Assistant: [ToolCall: Time] (Content is null or empty)
-        // 3. User (Tool Output): "12:00"
-        // 4. Assistant: "It is 12:00"
-
-        // So for the *final* message update, we want the content from the LAST iteration.
-        // If we declare it outside, we can keep the value from the last iteration.
-        // Inside the loop we should probably reset it because each fetch gets a fresh response for that turn.
-
-
 
         const response = await fetch(`${API_BASE_URL}/chat/completions`, {
           method: 'POST',
@@ -250,7 +147,7 @@ export function useSendMessage() {
           },
           body: JSON.stringify({
             model,
-            messages: currentMessages,
+            messages: apiMessages,
             stream: true,
             tools: getToolDefinitions(),
           }),
@@ -272,12 +169,6 @@ export function useSendMessage() {
           name?: string,
           arguments: string
         }> = {};
-
-        // We'll track what we've rendered to the UI for this turn
-        // Note: We might be appending to the *same* assistant message if it's a tool output + follow up
-        // OR we might want to update the *current* assistant message with the partial content.
-
-        // let assistantReasoning = ''; // Removed local declaration
 
         while (true) {
           const { done, value } = await reader.read();
@@ -310,7 +201,6 @@ export function useSendMessage() {
               }
 
               if (shouldUpdate) {
-                // Update UI with content (streaming)
                 updateMessage(assistantMessageId, getFullContent(), true);
               }
 
@@ -331,24 +221,15 @@ export function useSendMessage() {
           }
         }
 
-        // Processing complete for this turn
         const finalToolCalls = Object.values(toolCalls);
 
-        // If no tool calls, we are done
         if (finalToolCalls.length === 0) {
           isDone = true;
-          // Final update to set streaming false
           updateMessage(assistantMessageId, getFullContent(), false);
           break;
         }
 
         // Handle tool calls
-        // 1. Update UI to show tools are running
-
-        // We need to conform to the ToolUIPart structure expected by the UI component
-        // The UI component expects: type, state, input, output, errorText.
-        // In the USER_REQUEST example: type="tool-fetch_weather_data"
-
         const toolPartsForUI = finalToolCalls.map(tc => {
           let args = {};
           try { args = JSON.parse(tc.arguments); } catch (e) { }
@@ -358,17 +239,15 @@ export function useSendMessage() {
             input: args,
             output: undefined,
             errorText: undefined,
-            toolCallId: tc.id || '', // Ensure it's always a string
+            toolCallId: tc.id || '',
           } as ToolUIPart;
         });
 
-        // Add these parts to the message
         updateMessage(assistantMessageId, getFullContent(), true, toolPartsForUI);
 
-        // 2. Update API messages history with the assistant's decision to call tools
-        currentMessages.push({
+        apiMessages.push({
           role: 'assistant',
-          content: assistantContent || null, // content can be null if only tool calls
+          content: assistantContent || null,
           tool_calls: finalToolCalls.map(tc => ({
             id: tc.id,
             type: 'function',
@@ -379,7 +258,6 @@ export function useSendMessage() {
           }))
         } as any);
 
-        // 3. Execute tools
         const toolOutputs = await Promise.all(finalToolCalls.map(async (tc, index) => {
           let args = {};
           try { args = JSON.parse(tc.arguments); } catch (e) {
@@ -400,43 +278,33 @@ export function useSendMessage() {
             isError = true;
           }
 
-          // Update UI for this specific tool
-          // We need to find the part in the message and update it
-          // Since we can't easily partially update valid state in our store structure without reading it back,
-          // we will carry the state in our local loop and push updates.
           toolPartsForUI[index].state = isError ? 'output-error' : 'output-available';
           toolPartsForUI[index].output = result;
           if (isError) toolPartsForUI[index].errorText = JSON.stringify(result.error);
 
-          // Push intermediate update to UI (showing completion)
           updateMessage(assistantMessageId, getFullContent(), true, [...toolPartsForUI]);
 
           return {
             tool_call_id: tc.id,
             role: 'tool',
-            name: tc.name,
+            name: tc.name, // Usually not required for 'tool' role but helpful
             content: JSON.stringify(result)
           };
         }));
 
-        // 4. Add tool outputs to API messages
         toolOutputs.forEach(output => {
-          currentMessages.push(output as any);
+          apiMessages.push(output as any);
         });
-
-        // Loop continues to next iteration (sending tool outputs to LLM)
-      }
+      } // while loop
 
       if (iterationCount >= MAX_ITERATIONS) {
         updateMessage(assistantMessageId, getFullContent() + "\n\n[System: Max tool iterations reached]", false);
       }
 
     } catch (error) {
-      // Check if error is due to abort
       if (error instanceof Error && error.name === 'AbortError') {
         console.log('Stream aborted by user');
-        // Don't show error message for user-initiated aborts
-        updateMessage(assistantMessageId, getFullContent(), false);
+        updateMessage(assistantMessageId, 'Error: Stream aborted', false);
       } else {
         console.error('Error sending message:', error);
         updateMessage(assistantMessageId, 'Error: Failed to get response', false);
@@ -446,7 +314,151 @@ export function useSendMessage() {
       abortControllerRef.current = null;
       setIsStreaming(false);
     }
+  }; // streamResponse
+
+  const sendMessage = async (
+    content: string,
+    model: string,
+    conversationHistory: Message[],
+    systemPrompt?: string,
+    attachments?: File[]
+  ) => {
+    if (!apiKey) {
+      throw new Error('No API key configured');
+    }
+
+    abortControllerRef.current = new AbortController();
+    setIsStreaming(true);
+
+    // Prepare history
+    let currentMessages = conversationHistory
+      .filter(m => !m.streaming)
+      .map(m => ({
+        role: m.role,
+        content: m.content as string | Array<any>,
+      }));
+
+    if (systemPrompt && systemPrompt.trim()) {
+      currentMessages = [{ role: 'system', content: systemPrompt }, ...currentMessages];
+    }
+
+    // Process attachments
+    const processedAttachments = attachments ? await Promise.all(
+      attachments.map(async (file) => ({
+        file,
+        url: await fileToBase64(file),
+        isImage: file.type.startsWith('image/')
+      }))
+    ) : [];
+
+    let apiContent: string | Array<any> = content;
+    const apiImages = processedAttachments
+      .filter(p => p.isImage)
+      .map(p => ({
+        type: 'image_url',
+        image_url: {
+          url: p.url,
+        },
+      }));
+
+    if (apiImages.length > 0) {
+      apiContent = [
+        { type: 'text', text: content },
+        ...apiImages,
+      ];
+    }
+
+    currentMessages.push({ role: 'user', content: apiContent });
+
+    // UI Updates
+    const userMessage: Message = {
+      id: `user-${Date.now()}`,
+      role: 'user',
+      content,
+      timestamp: Date.now(),
+      attachments: processedAttachments.map(p => ({
+        url: p.url,
+        contentType: p.file.type,
+        name: p.file.name
+      })),
+    };
+    addMessage(userMessage);
+
+    const assistantMessageId = `assistant-${Date.now()}`;
+    const assistantMessage: Message = {
+      id: assistantMessageId,
+      role: 'assistant',
+      content: '',
+      timestamp: Date.now(),
+      streaming: true,
+      parts: [],
+    };
+    addMessage(assistantMessage);
+
+    await streamResponse(currentMessages, model, assistantMessageId);
   };
 
-  return { sendMessage, isStreaming, stopStreaming };
+  const regenerate = async (
+    messageId: string,
+    model: string,
+    conversationHistory: Message[],
+    systemPrompt?: string
+  ) => {
+    if (!apiKey) {
+      throw new Error('No API key configured');
+    }
+
+    // Find message index
+    const index = conversationHistory.findIndex(m => m.id === messageId);
+    if (index === -1) return;
+
+    // We assume we are regenerating from this point.
+    // If it's an assistant message, we revert to state BEFORE it.
+    // If it's a user message, we revert to state INCLUDING it?
+    // Let's implement standard Assistant Regenerate:
+    // The messageId passed is the Assistant message we want to replace.
+
+    // Safety check: is it assistant?
+    const targetMsg = conversationHistory[index];
+    if (targetMsg.role !== 'assistant') {
+      console.warn("Regenerate called on non-assistant message");
+      return;
+    }
+
+    // Truncate history in Store
+    // Keep 0 to index-1
+    const newHistory = conversationHistory.slice(0, index);
+    setMessages(newHistory);
+
+    abortControllerRef.current = new AbortController();
+    setIsStreaming(true);
+
+    // Prepare API messages
+    let apiMessages = newHistory
+      .filter(m => !m.streaming)
+      .map(m => ({
+        role: m.role,
+        content: m.content as string | Array<any>,
+      }));
+
+    if (systemPrompt && systemPrompt.trim()) {
+      apiMessages = [{ role: 'system', content: systemPrompt }, ...apiMessages];
+    }
+
+    // Add new assistant placeholder
+    const assistantMessageId = `assistant-${Date.now()}`;
+    const assistantMessage: Message = {
+      id: assistantMessageId,
+      role: 'assistant',
+      content: '',
+      timestamp: Date.now(),
+      streaming: true,
+      parts: [],
+    };
+    addMessage(assistantMessage);
+
+    await streamResponse(apiMessages, model, assistantMessageId);
+  };
+
+  return { sendMessage, regenerate, isStreaming, stopStreaming };
 }
