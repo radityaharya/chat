@@ -274,7 +274,8 @@ code {
 
 /* Dynamic viewport height (set by JavaScript) */
 :root {
-  --vh: 1vh; /* Fallback, will be overridden by JS */
+  --vh: 1vh;
+  /* Fallback, will be overridden by JS */
 }
 
 /* Safe area insets for notched devices */
@@ -282,15 +283,15 @@ code {
   .safe-top {
     padding-top: env(safe-area-inset-top);
   }
-  
+
   .safe-bottom {
     padding-bottom: env(safe-area-inset-bottom);
   }
-  
+
   .safe-left {
     padding-left: env(safe-area-inset-left);
   }
-  
+
   .safe-right {
     padding-right: env(safe-area-inset-right);
   }
@@ -298,19 +299,22 @@ code {
 
 /* Touch-optimized interactions */
 @media (hover: none) and (pointer: coarse) {
+
   /* Mobile-specific scrollbar (thinner) */
   *::-webkit-scrollbar {
     width: 4px;
     height: 4px;
   }
-  
+
   /* Disable hover effects on touch devices */
   .hover-desktop:hover {
     background-color: inherit;
   }
-  
+
   /* Larger tap targets */
-  button, a, [role="button"] {
+  button,
+  a,
+  [role="button"] {
     min-height: 44px;
     min-width: 44px;
   }
@@ -329,7 +333,7 @@ code {
   .drawer-transition {
     transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   }
-  
+
   .backdrop-transition {
     transition: opacity 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   }

@@ -170,7 +170,8 @@ export const ReasoningContent = memo(
       )}
       {...props}
     >
-      <Streamdown {...props}>{children}</Streamdown>
+      <Streamdown {...props} shikiTheme={["github-dark", "github-light"]}>{children}
+      </Streamdown>
     </CollapsibleContent>
   )
 );
