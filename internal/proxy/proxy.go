@@ -386,13 +386,15 @@ func extractClientIP(remoteAddr string) string {
 }
 
 func joinPaths(basePath, requestPath string) string {
-	if strings.HasSuffix(basePath, "/") && strings.HasPrefix(requestPath, "/") {
-		return basePath + requestPath[1:]
+	cleanBase := strings.TrimSuffix(basePath, "/")
+	cleanReq := strings.TrimPrefix(requestPath, "/")
+
+	// Handle duplicate /v1/ segments at the junction
+	if strings.HasSuffix(cleanBase, "/v1") && strings.HasPrefix(cleanReq, "v1/") {
+		cleanReq = strings.TrimPrefix(cleanReq, "v1/")
 	}
-	if !strings.HasSuffix(basePath, "/") && !strings.HasPrefix(requestPath, "/") {
-		return basePath + "/" + requestPath
-	}
-	return basePath + requestPath
+
+	return cleanBase + "/" + cleanReq
 }
 
 func setProxyHeaders(req *http.Request, targetHost, originalHost, clientIP string) {

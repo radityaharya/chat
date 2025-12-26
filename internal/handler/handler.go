@@ -14,13 +14,14 @@ import (
 )
 
 const (
-	chatCompletionsPath = "/chat/completions"
-	validatePath        = "/v1/validate"
-	modelsPath          = "/v1/models"
-	settingsPath        = "/v1/settings"
-	contentTypeJSON     = "application/json"
-	streamTruePattern   = `"stream":true`
-	peekBufferSize      = 1024
+	chatCompletionsPath   = "/chat/completions"
+	chatCompletionsV1Path = "/v1/chat/completions"
+	validatePath          = "/v1/validate"
+	modelsPath            = "/v1/models"
+	settingsPath          = "/v1/settings"
+	contentTypeJSON       = "application/json"
+	streamTruePattern     = `"stream":true`
+	peekBufferSize        = 1024
 )
 
 func HandleRequest(cfg *model.Config, w http.ResponseWriter, r *http.Request) {
@@ -31,7 +32,7 @@ func HandleRequest(cfg *model.Config, w http.ResponseWriter, r *http.Request) {
 }
 
 func checkStreamingRequest(r *http.Request) (bool, error) {
-	if r.URL.Path != chatCompletionsPath || r.Method != "POST" {
+	if (r.URL.Path != chatCompletionsPath && r.URL.Path != chatCompletionsV1Path) || r.Method != "POST" {
 		return false, nil
 	}
 
@@ -109,7 +110,7 @@ func authenticateRequest(r *http.Request, cfg *model.Config) bool {
 }
 
 func handleProtectedEndpoints(w http.ResponseWriter, r *http.Request, cfg *model.Config) bool {
-	if r.URL.Path == chatCompletionsPath && r.Method == "POST" {
+	if (r.URL.Path == chatCompletionsPath || r.URL.Path == chatCompletionsV1Path) && r.Method == "POST" {
 		HandleChatCompletions(w, r, cfg)
 		logResponse(cfg.Logger, w)
 		return true

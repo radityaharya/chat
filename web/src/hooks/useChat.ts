@@ -200,6 +200,23 @@ export function useSendMessage() {
 
     // 3. Main loop for handling tool calls and follow-ups
     let assistantContent = '';
+    let assistantReasoning = ''; // Track reasoning across turns
+
+    // Helper to construct display content with reasoning
+    const getFullContent = () => {
+      if (assistantReasoning) {
+        // If we have content, close the think tag. If not, leaving it open keeps it in "thinking" state.
+        // Actually for consistent UI parsing, we should close it if we are about to append content.
+        // Or if we return to the UI, unclosed tag is fine?
+        // Let's stick to the logic:
+        if (assistantContent) {
+          return `<think>${assistantReasoning}</think>${assistantContent}`;
+        }
+        return `<think>${assistantReasoning}`;
+      }
+      return assistantContent;
+    };
+
     try {
       let isDone = false;
       let iterationCount = 0;
@@ -260,6 +277,8 @@ export function useSendMessage() {
         // Note: We might be appending to the *same* assistant message if it's a tool output + follow up
         // OR we might want to update the *current* assistant message with the partial content.
 
+        // let assistantReasoning = ''; // Removed local declaration
+
         while (true) {
           const { done, value } = await reader.read();
           if (done) break;
@@ -278,11 +297,21 @@ export function useSendMessage() {
               const choice = parsed.choices?.[0];
               const delta = choice?.delta;
 
+              let shouldUpdate = false;
+
+              if (delta?.reasoning_content) {
+                assistantReasoning += delta.reasoning_content;
+                shouldUpdate = true;
+              }
+
               if (delta?.content) {
                 assistantContent += delta.content;
+                shouldUpdate = true;
+              }
+
+              if (shouldUpdate) {
                 // Update UI with content (streaming)
-                // We merge with existing parts if any
-                updateMessage(assistantMessageId, assistantContent, true);
+                updateMessage(assistantMessageId, getFullContent(), true);
               }
 
               if (delta?.tool_calls) {
@@ -309,7 +338,7 @@ export function useSendMessage() {
         if (finalToolCalls.length === 0) {
           isDone = true;
           // Final update to set streaming false
-          updateMessage(assistantMessageId, assistantContent, false);
+          updateMessage(assistantMessageId, getFullContent(), false);
           break;
         }
 
@@ -334,7 +363,7 @@ export function useSendMessage() {
         });
 
         // Add these parts to the message
-        updateMessage(assistantMessageId, assistantContent, true, toolPartsForUI);
+        updateMessage(assistantMessageId, getFullContent(), true, toolPartsForUI);
 
         // 2. Update API messages history with the assistant's decision to call tools
         currentMessages.push({
@@ -380,7 +409,7 @@ export function useSendMessage() {
           if (isError) toolPartsForUI[index].errorText = JSON.stringify(result.error);
 
           // Push intermediate update to UI (showing completion)
-          updateMessage(assistantMessageId, assistantContent, true, [...toolPartsForUI]);
+          updateMessage(assistantMessageId, getFullContent(), true, [...toolPartsForUI]);
 
           return {
             tool_call_id: tc.id,
@@ -399,7 +428,7 @@ export function useSendMessage() {
       }
 
       if (iterationCount >= MAX_ITERATIONS) {
-        updateMessage(assistantMessageId, assistantContent + "\n\n[System: Max tool iterations reached]", false);
+        updateMessage(assistantMessageId, getFullContent() + "\n\n[System: Max tool iterations reached]", false);
       }
 
     } catch (error) {
@@ -407,7 +436,7 @@ export function useSendMessage() {
       if (error instanceof Error && error.name === 'AbortError') {
         console.log('Stream aborted by user');
         // Don't show error message for user-initiated aborts
-        updateMessage(assistantMessageId, assistantContent, false);
+        updateMessage(assistantMessageId, getFullContent(), false);
       } else {
         console.error('Error sending message:', error);
         updateMessage(assistantMessageId, 'Error: Failed to get response', false);

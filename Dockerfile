@@ -4,7 +4,7 @@ FROM oven/bun:1-alpine AS frontend-builder
 WORKDIR /app/web
 
 # Copy only dependency files first for better caching
-COPY web/package.json web/bun.lockb ./
+COPY web/package.json ./
 
 # Install dependencies (this layer will be cached unless package files change)
 RUN bun install --frozen-lockfile
