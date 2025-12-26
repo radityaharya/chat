@@ -28,6 +28,8 @@ import {
   RefreshCw,
   Trash2,
   Check,
+  BookmarkIcon,
+  GitFork,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -35,6 +37,8 @@ interface ChatMessageProps {
   message: StoreMessage;
   onRegenerate?: (id: string) => void;
   onDelete?: (id: string) => void;
+  onCheckpoint?: (id: string) => void;
+  onFork?: (id: string) => void;
 }
 
 interface ParsedContent {
@@ -68,7 +72,7 @@ function parseThinkingTags(content: string): ParsedContent {
 }
 
 
-export function ChatMessage({ message, onRegenerate, onDelete }: ChatMessageProps) {
+export function ChatMessage({ message, onRegenerate, onDelete, onCheckpoint, onFork }: ChatMessageProps) {
   const [copied, setCopied] = useState(false);
   const parsed = parseThinkingTags(message.content);
   const hasThinking = parsed.thinking !== null;
@@ -161,6 +165,18 @@ export function ChatMessage({ message, onRegenerate, onDelete }: ChatMessageProp
           {message.role === 'assistant' && onRegenerate && (
             <MessageAction onClick={() => onRegenerate(message.id)} tooltip="Regenerate">
               <RefreshCw size={14} />
+            </MessageAction>
+          )}
+
+          {onCheckpoint && (
+            <MessageAction onClick={() => onCheckpoint(message.id)} tooltip="Checkpoint">
+              <BookmarkIcon size={14} />
+            </MessageAction>
+          )}
+
+          {onFork && (
+            <MessageAction onClick={() => onFork(message.id)} tooltip="Fork Conversation">
+              <GitFork size={14} />
             </MessageAction>
           )}
 

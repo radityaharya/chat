@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, Fragment } from 'react';
 import { createFileRoute, useNavigate } from '@tanstack/react-router';
 import {
   useApiKey,
@@ -14,6 +14,10 @@ import {
   useCreateConversation,
   useSetActiveConversation,
   useSetSystemPrompt,
+  useCreateCheckpoint,
+  useRestoreCheckpoint,
+  useCheckpoints,
+  useForkConversation,
 } from '@/store';
 import { useModels, useSendMessage } from '@/hooks/useChat';
 import { useViewportHeight } from '@/hooks/useViewportHeight';
@@ -28,6 +32,11 @@ import {
   ConversationEmptyState,
   ConversationScrollButton,
 } from '@/components/ai-elements/conversation';
+import {
+  Checkpoint,
+  CheckpointIcon,
+  CheckpointTrigger,
+} from '@/components/ai-elements/checkpoint';
 import { MessageSquare, Settings, Trash2, LogOut, PanelLeft, RulerIcon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { nanoid } from 'nanoid';
@@ -60,6 +69,10 @@ function ChatPage() {
   const createConversation = useCreateConversation();
   const setActiveConversation = useSetActiveConversation();
   const setSystemPrompt = useSetSystemPrompt();
+  const checkpoints = useCheckpoints();
+  const createCheckpoint = useCreateCheckpoint();
+  const restoreCheckpoint = useRestoreCheckpoint();
+  const forkConversation = useForkConversation();
 
   const { data: models, isLoading: _isLoadingModels } = useModels();
   const { sendMessage, regenerate, isStreaming, stopStreaming } = useSendMessage();
@@ -180,6 +193,21 @@ function ChatPage() {
     deleteMessage(id);
   };
 
+  const handleCreateCheckpoint = (id: string) => {
+    createCheckpoint(id);
+  };
+
+  const handleRestoreCheckpoint = (id: string) => {
+    restoreCheckpoint(id);
+  };
+
+  const handleForkConversation = (id: string) => {
+    const newId = forkConversation(id);
+    if (newId) {
+      setActiveConversation(newId);
+    }
+  };
+
   const handleLogout = () => {
     setLogoutOpen(true);
   };
@@ -295,14 +323,30 @@ function ChatPage() {
                 className="text-terminal-muted mt-12 sm:mt-20"
               />
             ) : (
-              messages.map((message) => (
-                <ChatMessage
-                  key={message.id}
-                  message={message}
-                  onRegenerate={handleRegenerate}
-                  onDelete={handleDeleteMessage}
-                />
-              ))
+              messages.map((message) => {
+                const checkpoint = checkpoints.find(cp => cp.messageId === message.id);
+                return (
+                  <Fragment key={message.id}>
+                    <ChatMessage
+                      message={message}
+                      onRegenerate={handleRegenerate}
+                      onDelete={handleDeleteMessage}
+                      onCheckpoint={handleCreateCheckpoint}
+                      onFork={handleForkConversation}
+                    />
+                    {checkpoint && (
+                      <Checkpoint>
+                        <CheckpointIcon />
+                        <CheckpointTrigger
+                          onClick={() => handleRestoreCheckpoint(checkpoint.id)}
+                        >
+                          Restore checkpoint
+                        </CheckpointTrigger>
+                      </Checkpoint>
+                    )}
+                  </Fragment>
+                );
+              })
             )}
           </ConversationContent>
           <ConversationScrollButton className="bg-terminal-surface border-terminal-border hover:bg-terminal-border text-terminal-text" />

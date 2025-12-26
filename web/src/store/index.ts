@@ -17,10 +17,17 @@ interface Message {
   }[];
 }
 
+interface Checkpoint {
+  id: string;
+  messageId: string;
+  createdAt: number;
+}
+
 interface Conversation {
   id: string;
   title: string;
   messages: Message[];
+  checkpoints: Checkpoint[];
   updatedAt: number;
 }
 
@@ -49,6 +56,9 @@ interface UIState {
   setMessages: (messages: Message[]) => void;
   updateMessage: (id: string, content: string, streaming?: boolean, parts?: ToolUIPart[]) => void;
   clearMessages: () => void;
+  createCheckpoint: (messageId: string) => void;
+  restoreCheckpoint: (checkpointId: string) => void;
+  forkConversation: (messageId: string) => string;
 
   selectedModel: string | null;
   setSelectedModel: (model: string) => void;
@@ -87,6 +97,7 @@ export const useUIStore = create<UIState>()(
               id,
               title: 'New Chat',
               messages: [],
+              checkpoints: [],
               updatedAt: Date.now(),
             },
           },
@@ -118,6 +129,7 @@ export const useUIStore = create<UIState>()(
             id: activeId,
             title: message.role === 'user' ? (message.content.slice(0, 30) || 'New Chat') : 'New Chat',
             messages: [],
+            checkpoints: [],
             updatedAt: Date.now(),
           };
         }
@@ -225,6 +237,106 @@ export const useUIStore = create<UIState>()(
         };
       }),
 
+      createCheckpoint: (messageId) => set((state) => {
+        const activeId = state.activeConversationId;
+        if (!activeId || !state.conversations[activeId]) return {};
+
+        const chat = { ...state.conversations[activeId] };
+        const newCheckpoint: Checkpoint = {
+          id: nanoid(),
+          messageId,
+          createdAt: Date.now(),
+        };
+        chat.checkpoints = [...(chat.checkpoints || []), newCheckpoint];
+        chat.updatedAt = Date.now();
+
+        return {
+          conversations: {
+            ...state.conversations,
+            [activeId]: chat
+          }
+        };
+      }),
+
+      restoreCheckpoint: (checkpointId) => set((state) => {
+        const activeId = state.activeConversationId;
+        if (!activeId || !state.conversations[activeId]) return {};
+
+        const chat = { ...state.conversations[activeId] };
+        const checkpoint = chat.checkpoints?.find((cp) => cp.id === checkpointId);
+
+        if (!checkpoint) return {};
+
+        const messageIndex = chat.messages.findIndex((msg) => msg.id === checkpoint.messageId);
+
+        if (messageIndex === -1) return {};
+
+        // Restore messages up to and including the checkpoint message
+        chat.messages = chat.messages.slice(0, messageIndex + 1);
+
+        // Remove this checkpoint and any others that attached to messages that are now gone
+        // Actually, logic says "remove checkpoints after this point".
+        // The current checkpoint is KEPT? Or removed?
+        // Prompt says: "Remove checkpoints after this point"
+        // Also typically in "restore", you might want to keep the checkpoint you restored TO, 
+        // OR consume it.
+        // Let's assume we keep the one we restored to, but remove any that were attached to messages we just deleted (which shouldn't happen if we only restore to this index, unless we have checkpoints on future messages).
+        // BUT wait, if we delete message N+1...M, any checkpoints attached to those must die.
+        // Also, if we are "restoring" presumably we might want to "branch" effectively, existing checkpoints on the common history stay.
+
+        // Filter checkpoints: keep those where the messageId still exists in the truncated list.
+        const remainingMessageIds = new Set(chat.messages.map(m => m.id));
+        chat.checkpoints = chat.checkpoints.filter(cp => remainingMessageIds.has(cp.messageId));
+
+        // Use case also says:
+        // setCheckpoints(checkpoints.filter(cp => cp.messageIndex <= messageIndex));
+        // So we remove checkpoints that were AFTER this one.
+
+        chat.updatedAt = Date.now();
+
+        return {
+          conversations: {
+            ...state.conversations,
+            [activeId]: chat
+          }
+        };
+      }),
+
+      forkConversation: (messageId) => {
+        let newId = '';
+        set((state) => {
+          const activeId = state.activeConversationId;
+          const conversations = { ...state.conversations };
+          if (!activeId || !conversations[activeId]) return {};
+
+          const sourceChat = conversations[activeId];
+          const messageIndex = sourceChat.messages.findIndex((m) => m.id === messageId);
+
+          if (messageIndex === -1) return {};
+
+          newId = nanoid();
+          const newMessages = sourceChat.messages.slice(0, messageIndex + 1);
+
+          // Filter valid checkpoints
+          const remainingMessageIds = new Set(newMessages.map(m => m.id));
+          const newCheckpoints = (sourceChat.checkpoints || []).filter(cp => remainingMessageIds.has(cp.messageId));
+
+          conversations[newId] = {
+            id: newId,
+            title: `${sourceChat.title} (Fork)`,
+            messages: newMessages,
+            checkpoints: newCheckpoints,
+            updatedAt: Date.now(),
+          };
+
+          return {
+            conversations,
+            activeConversationId: newId,
+          };
+        });
+        return newId;
+      },
+
       selectedModel: null,
       setSelectedModel: (model) => set({ selectedModel: model }),
     }),
@@ -257,9 +369,17 @@ export const useCreateConversation = () => useUIStore((s) => s.createConversatio
 export const useDeleteConversation = () => useUIStore((s) => s.deleteConversation);
 export const useSetActiveConversation = () => useUIStore((s) => s.setActiveConversation);
 
+const EMPTY_MESSAGES: Message[] = [];
+const EMPTY_CHECKPOINTS: Checkpoint[] = [];
+
 export const useMessages = () => useUIStore((s) => {
   const chat = s.activeConversationId ? s.conversations[s.activeConversationId] : null;
-  return chat ? chat.messages : [];
+  return chat ? chat.messages : EMPTY_MESSAGES;
+});
+
+export const useCheckpoints = () => useUIStore((s) => {
+  const chat = s.activeConversationId ? s.conversations[s.activeConversationId] : null;
+  return chat ? (chat.checkpoints || EMPTY_CHECKPOINTS) : EMPTY_CHECKPOINTS;
 });
 
 export const useAddMessage = () => useUIStore((s) => s.addMessage);
@@ -269,6 +389,9 @@ export const useUpdateMessage = () => useUIStore((s) => s.updateMessage);
 export const useClearMessages = () => useUIStore((s) => s.clearMessages);
 export const useSelectedModel = () => useUIStore((s) => s.selectedModel);
 export const useSetSelectedModel = () => useUIStore((s) => s.setSelectedModel);
+export const useCreateCheckpoint = () => useUIStore((s) => s.createCheckpoint);
+export const useRestoreCheckpoint = () => useUIStore((s) => s.restoreCheckpoint);
+export const useForkConversation = () => useUIStore((s) => s.forkConversation);
 
 // Export Message type
-export type { Message, Conversation };
+export type { Message, Conversation, Checkpoint };
