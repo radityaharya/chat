@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { type LocalTool } from '../types';
 
-const BASE_URL = 'http://100.101.101.102:8080';
+const BASE_URL = 'http://100.101.102.100:8873/api';
 
 interface ComulineResponse<T> {
   metadata: {
@@ -28,7 +28,7 @@ interface Schedule {
 
 export const comulineTool: LocalTool = {
   name: 'comuline',
-  description: 'Get Indonesia Commuter Line (KRL) information. Workflow: 1. Find station ID using "search_station" with a name (e.g. "Cisauk"). 2. Get schedule using "get_schedule" with the Station ID. 3. Get specific train route using "get_route" with Train ID. Do NOT guess station IDs.',
+  description: 'Get Indonesia Commuter Line (KRL) information. Workflow: 1. Always use "get_current_time" tool FIRST to get the current time. 2. Find station ID using "search_station" with a name (e.g. "Cisauk"). 3. Get schedule using "get_schedule" with the Station ID. 4. Get specific train route using "get_route" with Train ID. Do NOT guess station IDs.',
   parameters: z.object({
     action: z.enum(['search_station', 'get_schedule', 'get_route']).describe('Action to perform. search_station: Find station ID by name. get_schedule: Get today\'s schedule for a station. get_route: Get train route details.'),
     query: z.string().optional().describe('Search term for search_station (e.g. "Manggarai", "Cisauk").'),
@@ -83,7 +83,12 @@ export const comulineTool: LocalTool = {
           return `No trains scheduled for today (${now.toLocaleDateString()}). The API might be returning outdated or future data only.`;
         }
 
-        return upcoming.length > 0 ? upcoming : schedules.slice(0, 15);
+        const results = upcoming.length > 0 ? upcoming : schedules.slice(0, 15);
+        return results.map((s) => ({
+          ...s,
+          departs_at: new Date(s.departs_at).toLocaleString(),
+          arrives_at: new Date(s.arrives_at).toLocaleString(),
+        }));
       }
 
       if (action === 'get_route') {

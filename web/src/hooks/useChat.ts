@@ -2,6 +2,7 @@ import { useState, useRef } from 'react';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { useApiKey, useAddMessage, useUpdateMessage, type Message, useSetMessages } from '@/store';
 import { getToolDefinitions, tools } from '@/tools';
+import { UI_RESPONSE_GUIDE } from '@/lib/ui-response-guide';
 import type { ToolUIPart } from 'ai';
 
 const API_BASE_URL = '/api';
@@ -383,7 +384,12 @@ export function useSendMessage() {
       }));
 
     if (systemPrompt && systemPrompt.trim()) {
-      currentMessages = [{ role: 'system', content: systemPrompt }, ...currentMessages];
+      // Always append UI response guide to user's system prompt
+      const fullSystemPrompt = systemPrompt + UI_RESPONSE_GUIDE;
+      currentMessages = [{ role: 'system', content: fullSystemPrompt }, ...currentMessages];
+    } else {
+      // If no custom system prompt, just use the UI guide
+      currentMessages = [{ role: 'system', content: UI_RESPONSE_GUIDE.trim() }, ...currentMessages];
     }
 
     // Process attachments
@@ -486,7 +492,12 @@ export function useSendMessage() {
       }));
 
     if (systemPrompt && systemPrompt.trim()) {
-      apiMessages = [{ role: 'system', content: systemPrompt }, ...apiMessages];
+      // Always append UI response guide to user's system prompt
+      const fullSystemPrompt = systemPrompt + UI_RESPONSE_GUIDE;
+      apiMessages = [{ role: 'system', content: fullSystemPrompt }, ...apiMessages];
+    } else {
+      // If no custom system prompt, just use the UI guide
+      apiMessages = [{ role: 'system', content: UI_RESPONSE_GUIDE.trim() }, ...apiMessages];
     }
 
     // Add new assistant placeholder

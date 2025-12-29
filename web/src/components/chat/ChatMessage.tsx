@@ -22,6 +22,11 @@ import {
   ToolInput,
   ToolOutput,
 } from '@/components/ai-elements/tool';
+import {
+  UIResponse,
+  UIResponseHeader,
+  UIResponseContent,
+} from '@/components/ai-elements/ui-response';
 import type { Message as StoreMessage } from '@/store';
 import {
   Loader2Icon,
@@ -33,6 +38,7 @@ import {
   GitFork,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { parseUIResponses } from '@/lib/ui-response-parser';
 
 interface ChatMessageProps {
   message: StoreMessage;
@@ -46,29 +52,43 @@ interface ParsedContent {
   thinking: string | null;
   response: string;
   isThinking: boolean;
+  uiResponses: Array<{
+    id: string;
+    type?: string;
+    content: string;
+    parsed?: any;
+  }>;
 }
 
 function parseThinkingTags(content: string): ParsedContent {
   const thinkStart = content.indexOf('<think>');
-  if (thinkStart === -1) {
-    return { thinking: null, response: content, isThinking: false };
+  let contentAfterThinking = content;
+  let thinking: string | null = null;
+  let isThinking = false;
+
+  if (thinkStart !== -1) {
+    const thinkEnd = content.indexOf('</think>');
+
+    if (thinkEnd === -1) {
+      // Open thinking tag, no close yet
+      thinking = content.substring(thinkStart + 7);
+      contentAfterThinking = '';
+      isThinking = true;
+    } else {
+      thinking = content.substring(thinkStart + 7, thinkEnd);
+      contentAfterThinking = content.substring(thinkEnd + 8).trim();
+    }
   }
 
-  const thinkEnd = content.indexOf('</think>');
-
-  if (thinkEnd === -1) {
-    // Open thinking tag, no close yet
-    return {
-      thinking: content.substring(thinkStart + 7),
-      response: '',
-      isThinking: true,
-    };
-  }
+  // Parse UI responses but DON'T remove them from content
+  // We'll render them inline using Streamdown components
+  const { uiResponses } = parseUIResponses(contentAfterThinking);
 
   return {
-    thinking: content.substring(thinkStart + 7, thinkEnd),
-    response: content.substring(thinkEnd + 8).trim(),
-    isThinking: false,
+    thinking,
+    response: contentAfterThinking, // Keep ui-response tags in content for inline rendering
+    isThinking,
+    uiResponses,
   };
 }
 
@@ -87,10 +107,67 @@ export function ChatMessage({ message, onRegenerate, onDelete, onCheckpoint, onF
   const showLoading = message.streaming && !parsed.response && !hasThinking && !hasTools;
 
   const handleCopy = () => {
-    navigator.clipboard.writeText(message.content);
+    // Copy content without ui-response and think tags
+    const { cleanedContent } = parseUIResponses(message.content);
+    const contentWithoutThink = cleanedContent.replace(/<think>[\s\S]*?<\/think>/g, '').trim();
+    const contentToCopy = parsed.thinking
+      ? `${parsed.thinking}\n\n${contentWithoutThink}`.trim()
+      : contentWithoutThink;
+    navigator.clipboard.writeText(contentToCopy);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
+
+  // Helper to split content into segments with ui-response tags inline
+  const splitContentWithUIResponses = (content: string) => {
+    const segments: Array<{ type: 'text' | 'ui-response'; content: string; uiType?: string; parsed?: any }> = [];
+    const uiResponseRegex = /<ui-response(?:\s+type=["']([^"']+)["'])?\s*>([\s\S]*?)<\/ui-response>/g;
+
+    let lastIndex = 0;
+    let match;
+
+    while ((match = uiResponseRegex.exec(content)) !== null) {
+      // Add text before this ui-response
+      if (match.index > lastIndex) {
+        const textContent = content.substring(lastIndex, match.index);
+        if (textContent.trim()) {
+          segments.push({ type: 'text', content: textContent });
+        }
+      }
+
+      // Add the ui-response
+      const uiType = match[1] || 'data';
+      const uiContent = match[2];
+      let parsed: any = uiContent.trim();
+      try {
+        parsed = JSON.parse(uiContent.trim());
+      } catch {
+        parsed = uiContent.trim();
+      }
+
+      segments.push({
+        type: 'ui-response',
+        content: uiContent,
+        uiType,
+        parsed,
+      });
+
+      lastIndex = match.index + match[0].length;
+    }
+
+    // Add remaining text after last ui-response
+    if (lastIndex < content.length) {
+      const textContent = content.substring(lastIndex);
+      if (textContent.trim()) {
+        segments.push({ type: 'text', content: textContent });
+      }
+    }
+
+    return segments;
+  };
+
+  // Split content into segments for inline rendering
+  const contentSegments = splitContentWithUIResponses(parsed.response);
 
   return (
     <Message from={message.role} className="group/message">
@@ -102,7 +179,7 @@ export function ChatMessage({ message, onRegenerate, onDelete, onCheckpoint, onF
           </Reasoning>
         )}
         {hasTools && (
-          <div className="flex flex-col gap-2 mb-2">
+          <div className="flex flex-col mb-3">
             {message.parts?.map((part, index) => {
               if (!part.type.startsWith('tool-')) return null;
 
@@ -126,9 +203,32 @@ export function ChatMessage({ message, onRegenerate, onDelete, onCheckpoint, onF
           </div>
         )}
         {(parsed.response || (!showLoading && !hasTools && !hasImages)) && (
-          <MessageResponse>
-            {parsed.response || ((!message.streaming && !hasTools && !hasImages) ? 'No response' : '')}
-          </MessageResponse>
+          <>
+            {contentSegments.length > 0 ? (
+              contentSegments.map((segment, index) => {
+                if (segment.type === 'text') {
+                  return (
+                    <MessageResponse key={index}>
+                      {segment.content}
+                    </MessageResponse>
+                  );
+                } else {
+                  return (
+                    <div key={index} className="my-2">
+                      <UIResponse>
+                        <UIResponseHeader type={segment.uiType} />
+                        <UIResponseContent data={segment.parsed} type={segment.uiType} />
+                      </UIResponse>
+                    </div>
+                  );
+                }
+              })
+            ) : (
+              <MessageResponse>
+                {(!message.streaming && !hasTools && !hasImages) ? 'No response' : ''}
+              </MessageResponse>
+            )}
+          </>
         )}
         {message.images && message.images.length > 0 && (
           <div className="flex flex-col gap-2 my-2">
