@@ -59,7 +59,6 @@ function ChatPage() {
   const navigate = useNavigate();
   const apiKey = useApiKey();
   const setApiKey = useSetApiKey();
-  const { data: authStatus, isLoading: isCheckingAuth } = useCheckAuth();
   const messages = useMessages();
   const clearMessages = useClearMessages();
   const deleteMessage = useDeleteMessage();
@@ -78,6 +77,7 @@ function ChatPage() {
 
   const { data: models, isLoading: _isLoadingModels } = useModels();
   const { sendMessage, regenerate, isStreaming, stopStreaming } = useSendMessage();
+  const { data: authStatus, isLoading: isCheckingAuth } = useCheckAuth();
 
   // Mobile hooks
   useViewportHeight();
@@ -108,12 +108,13 @@ function ChatPage() {
     };
   }, [isMobile, sidebarOpen]);
 
-  // Redirect to login only if not authenticated via API key or session
+  // Redirect to login if not authenticated (wait for auth check to complete)
   useEffect(() => {
     if (!isCheckingAuth && !apiKey && !authStatus?.authenticated) {
       navigate({ to: '/login' });
     }
   }, [apiKey, authStatus, isCheckingAuth, navigate]);
+
 
   useEffect(() => {
     if (models && models.length > 0 && !selectedModel) {
@@ -224,18 +225,12 @@ function ChatPage() {
     }
   };
 
-  // Show loading while checking authentication
-  if (isCheckingAuth) {
+  if (isCheckingAuth || (!apiKey && !authStatus)) {
     return (
       <div className="min-h-screen bg-terminal-bg flex items-center justify-center">
         <Loader size={32} />
       </div>
     );
-  }
-
-  // Redirect to login if not authenticated
-  if (!apiKey && !authStatus?.authenticated) {
-    return null; // Will redirect via useEffect
   }
 
   return (
@@ -272,21 +267,9 @@ function ChatPage() {
               >
                 <PanelLeft className="size-4" />
               </Button>
-              <div className="flex flex-col min-w-0">
-                <h1 className="text-sm sm:text-lg font-bold truncate">
-                  {activeId && conversations[activeId] ? conversations[activeId].title : 'Chat'}
-                </h1>
-                {authStatus?.user && (
-                  <span className="text-xs text-terminal-muted truncate">
-                    @{authStatus.user.username}
-                  </span>
-                )}
-                {!authStatus?.user && apiKey && (
-                  <span className="text-xs text-terminal-muted truncate">
-                    API Key
-                  </span>
-                )}
-              </div>
+              <h1 className="text-sm sm:text-lg font-bold truncate">
+                {activeId && conversations[activeId] ? conversations[activeId].title : 'Chat'}
+              </h1>
             </div>
 
             <div className="flex items-center gap-1 sm:gap-2 shrink-0">

@@ -199,6 +199,88 @@ func isStreamingResponse(resp *http.Response, reqPath, reqBody string) bool {
 		(reqPath == chatCompletionsPath && strings.Contains(reqBody, streamTruePattern))
 }
 
+func shouldRetryWithoutTools(resp *http.Response, respBody string) bool {
+	if resp == nil {
+		return false
+	}
+	
+	// Check for OpenRouter-style tool error (404 with specific message)
+	if resp.StatusCode == http.StatusNotFound {
+		if strings.Contains(respBody, "No endpoints found that support tool use") ||
+			strings.Contains(respBody, "tool use") ||
+			strings.Contains(respBody, "tools") {
+			return true
+		}
+	}
+	
+	// Check for other common tool-related errors
+	if resp.StatusCode == http.StatusBadRequest {
+		if strings.Contains(respBody, "tool") ||
+			strings.Contains(respBody, "function calling not supported") {
+			return true
+		}
+	}
+	
+	return false
+}
+
+func removeToolsAndUpdatePrompt(bodyBytes []byte, logger *zap.Logger) ([]byte, error) {
+	var chatReq map[string]interface{}
+	if err := json.Unmarshal(bodyBytes, &chatReq); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal request: %w", err)
+	}
+	
+	// Check if tools parameter exists
+	if _, hasTools := chatReq["tools"]; !hasTools {
+		// No tools to remove, return original
+		return bodyBytes, nil
+	}
+	
+	// Remove tools parameter
+	delete(chatReq, "tools")
+	delete(chatReq, "tool_choice")
+	logger.Info("Removed tools and tool_choice parameters from request")
+	
+	// Inject message into system prompt
+	messages, ok := chatReq["messages"].([]interface{})
+	if !ok {
+		// If messages is not in expected format, just remove tools and continue
+		return json.Marshal(chatReq)
+	}
+	
+	toolNotSupportedMsg := "Note: This model does not support tool/function calling. Please answer the user's question directly without attempting to use any tools or functions."
+	
+	// Look for existing system message and append to it
+	foundSystem := false
+	for i, msg := range messages {
+		if msgMap, ok := msg.(map[string]interface{}); ok {
+			if role, ok := msgMap["role"].(string); ok && role == "system" {
+				if content, ok := msgMap["content"].(string); ok {
+					msgMap["content"] = content + "\n\n" + toolNotSupportedMsg
+					messages[i] = msgMap
+					foundSystem = true
+					logger.Info("Appended tool-not-supported message to existing system message")
+					break
+				}
+			}
+		}
+	}
+	
+	// If no system message found, prepend one
+	if !foundSystem {
+		systemMsg := map[string]interface{}{
+			"role":    "system",
+			"content": toolNotSupportedMsg,
+		}
+		messages = append([]interface{}{systemMsg}, messages...)
+		logger.Info("Prepended new system message about tool support")
+	}
+	
+	chatReq["messages"] = messages
+	
+	return json.Marshal(chatReq)
+}
+
 func (t *debugTransport) logStreamingResponse(resp *http.Response, respBodyStr string) {
 	t.logger.Debug("Streaming response detected",
 		zap.Int("status", resp.StatusCode),
@@ -238,6 +320,41 @@ func (t *debugTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 	var respBodyStr string
 	if resp.Body != nil {
 		resp.Body, respBodyStr = utils.DrainAndCapture(resp.Body, isStreaming)
+	}
+
+	// Check if this is a tool-use error and retry without tools if needed
+	if shouldRetryWithoutTools(resp, respBodyStr) {
+		t.logger.Info("Detected tool-use error, retrying without tools",
+			zap.String("backend", t.backend),
+			zap.Int("statusCode", resp.StatusCode))
+		
+		// Close the error response
+		closeResponseBody(resp)
+		
+		// Modify request to remove tools and update system prompt
+		modifiedBodyBytes, err := removeToolsAndUpdatePrompt(bodyBytes, t.logger)
+		if err != nil {
+			t.logger.Error("Failed to modify request for tool-less retry",
+				zap.String("backend", t.backend),
+				zap.Error(err))
+			// Return the original error response
+			resp.Body = io.NopCloser(bytes.NewBuffer([]byte(respBodyStr)))
+			return resp, nil
+		}
+		
+		// Restore request body with modified content
+		restoreRequestBody(req, modifiedBodyBytes)
+		
+		// Retry the request
+		resp, err = t.transport.RoundTrip(req)
+		if err != nil {
+			return nil, err
+		}
+		
+		// Capture the new response
+		if resp.Body != nil {
+			resp.Body, respBodyStr = utils.DrainAndCapture(resp.Body, isStreaming)
+		}
 	}
 
 	if isStreaming {
