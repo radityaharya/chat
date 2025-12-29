@@ -87,6 +87,14 @@ func LoadConfig(configFile, llmRouterAPIKeyEnv, llmRouterAPIKey string, listenin
 	cfg.Logger = logger
 	cfg.ConfigFilePath = configFile
 
+	// Load database URL - environment variable takes precedence over config file
+	if dbURL := os.Getenv("DATABASE_URL"); dbURL != "" {
+		cfg.DatabaseURL = dbURL
+		logger.Info("Database URL loaded from environment variable", zap.String("DATABASE_URL", "***"))
+	} else if cfg.DatabaseURL != "" {
+		logger.Info("Database URL loaded from config file", zap.String("DATABASE_URL", "***"))
+	}
+
 	logger.Info("Configuration loading completed successfully")
 	return &cfg, nil
 }

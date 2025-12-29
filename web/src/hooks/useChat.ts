@@ -26,8 +26,9 @@ export function useValidateAPIKey() {
       const response = await fetch(`${API_BASE_URL}/v1/validate`, {
         method: 'GET',
         headers: {
-          'Authorization': `Bearer ${apiKey} `,
+          'Authorization': `Bearer ${apiKey}`,
         },
+        credentials: 'include', // Include cookies for session auth
       });
 
       if (!response.ok) {
@@ -54,8 +55,9 @@ export function useModels() {
       const response = await fetch(`${API_BASE_URL}/v1/models`, {
         method: 'GET',
         headers: apiKey ? {
-          'Authorization': `Bearer ${apiKey} `,
+          'Authorization': `Bearer ${apiKey}`,
         } : {},
+        credentials: 'include', // Include cookies for session auth
       });
 
       if (!response.ok) {
@@ -65,7 +67,7 @@ export function useModels() {
       const data: ModelsResponse = await response.json();
       return data.data || [];
     },
-    enabled: !!apiKey,
+    enabled: true, // Always enabled, will use session if no API key
   });
 }
 
@@ -115,9 +117,8 @@ export function useSendMessage() {
     model: string,
     assistantMessageId: string
   ) => {
-    if (!apiKey) {
-      throw new Error('No API key configured');
-    }
+    // Allow streaming with session auth even without API key
+    // The backend will validate the session
 
     try {
       let assistantContent = '';
@@ -145,8 +146,9 @@ export function useSendMessage() {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            'Authorization': `Bearer ${apiKey}`,
+            ...(apiKey ? { 'Authorization': `Bearer ${apiKey}` } : {}),
           },
+          credentials: 'include', // Include cookies for session auth
           body: JSON.stringify({
             model,
             messages: apiMessages,
@@ -368,9 +370,8 @@ export function useSendMessage() {
     systemPrompt?: string,
     attachments?: File[]
   ) => {
-    if (!apiKey) {
-      throw new Error('No API key configured');
-    }
+    // Allow sending messages with session auth even without API key
+    // The backend will validate the session
 
     abortControllerRef.current = new AbortController();
     setIsStreaming(true);
@@ -454,9 +455,7 @@ export function useSendMessage() {
     conversationHistory: Message[],
     systemPrompt?: string
   ) => {
-    if (!apiKey) {
-      throw new Error('No API key configured');
-    }
+    // Allow regenerating with session auth even without API key
 
     // Find message index
     const index = conversationHistory.findIndex(m => m.id === messageId);

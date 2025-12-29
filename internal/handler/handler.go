@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"strings"
 
+	"llm-router/internal/identity"
 	"llm-router/internal/model"
 	"llm-router/internal/proxy"
 	"llm-router/internal/utils"
@@ -19,10 +20,22 @@ const (
 	validatePath          = "/v1/validate"
 	modelsPath            = "/v1/models"
 	settingsPath          = "/v1/settings"
+	authLoginPath         = "/v1/auth/login"
+	authLogoutPath        = "/v1/auth/logout"
+	authCheckPath         = "/v1/auth/check"
+	authSetupPath         = "/v1/auth/setup"
+	authAPIKeysPath       = "/v1/auth/api-keys"
 	contentTypeJSON       = "application/json"
 	streamTruePattern     = `"stream":true`
 	peekBufferSize        = 1024
 )
+
+var authManager *identity.AuthManager
+
+// SetAuthManager sets the global auth manager instance
+func SetAuthManager(am *identity.AuthManager) {
+	authManager = am
+}
 
 func HandleRequest(cfg *model.Config, w http.ResponseWriter, r *http.Request) {
 	recorder := utils.NewResponseRecorder(w)
@@ -84,7 +97,10 @@ func prepareRequestBody(r *http.Request, isStreaming bool, logger *zap.Logger) s
 
 func isPublicEndpoint(path, method string) bool {
 	return (path == validatePath && method == "GET") ||
-		(path == modelsPath && method == "GET")
+		(path == modelsPath && method == "GET") ||
+		(path == authSetupPath && method == "GET") ||
+		(path == authSetupPath && method == "POST") ||
+		(path == authLoginPath && method == "POST")
 }
 
 func handlePublicEndpoints(w http.ResponseWriter, r *http.Request, cfg *model.Config) bool {
@@ -100,10 +116,38 @@ func handlePublicEndpoints(w http.ResponseWriter, r *http.Request, cfg *model.Co
 		return true
 	}
 
+	// Identity endpoints (when authManager is available)
+	if authManager != nil {
+		if r.URL.Path == authSetupPath && r.Method == "GET" {
+			authManager.CheckInitialSetup(w, r)
+			logResponse(cfg.Logger, w)
+			return true
+		}
+
+		if r.URL.Path == authSetupPath && r.Method == "POST" {
+			authManager.InitialSetup(w, r)
+			logResponse(cfg.Logger, w)
+			return true
+		}
+
+		if r.URL.Path == authLoginPath && r.Method == "POST" {
+			authManager.Login(w, r)
+			logResponse(cfg.Logger, w)
+			return true
+		}
+	}
+
 	return false
 }
 
 func authenticateRequest(r *http.Request, cfg *model.Config) bool {
+	// If identity system is enabled, use it for authentication
+	if authManager != nil {
+		session, _ := authManager.GetSession(r)
+		return session != nil
+	}
+
+	// Fall back to legacy API key authentication
 	authHeader := r.Header.Get("Authorization")
 	expectedAuthHeader := "Bearer " + cfg.LLMRouterAPIKey
 	return authHeader == expectedAuthHeader
@@ -128,6 +172,39 @@ func handleProtectedEndpoints(w http.ResponseWriter, r *http.Request, cfg *model
 		return true
 	}
 
+	// Identity management endpoints (when authManager is available)
+	if authManager != nil {
+		if r.URL.Path == authLogoutPath && r.Method == "POST" {
+			authManager.Logout(w, r)
+			logResponse(cfg.Logger, w)
+			return true
+		}
+
+		if r.URL.Path == authCheckPath && r.Method == "GET" {
+			authManager.CheckAuth(w, r)
+			logResponse(cfg.Logger, w)
+			return true
+		}
+
+		if r.URL.Path == authAPIKeysPath && r.Method == "POST" {
+			authManager.CreateAPIKey(w, r)
+			logResponse(cfg.Logger, w)
+			return true
+		}
+
+		if r.URL.Path == authAPIKeysPath && r.Method == "GET" {
+			authManager.GetAPIKeys(w, r)
+			logResponse(cfg.Logger, w)
+			return true
+		}
+
+		if r.URL.Path == authAPIKeysPath && r.Method == "DELETE" {
+			authManager.DeleteAPIKey(w, r)
+			logResponse(cfg.Logger, w)
+			return true
+		}
+	}
+
 	return false
 }
 
@@ -144,18 +221,28 @@ func handleRequestInternal(cfg *model.Config, w http.ResponseWriter, r *http.Req
 	}
 
 	if !authenticateRequest(r, cfg) {
-		authHeader := r.Header.Get("Authorization")
-		expectedAuthHeader := "Bearer " + cfg.LLMRouterAPIKey
-		cfg.Logger.Warn("Invalid or missing API key",
-			zap.String("receivedAuthHeader", utils.RedactAuthorization(authHeader)),
-			zap.String("expectedAuthHeader", utils.RedactAuthorization(expectedAuthHeader)))
+		if authManager != nil {
+			// Identity system is enabled but authentication failed
+			cfg.Logger.Warn("Authentication failed - no valid session or API key")
+		} else {
+			// Legacy authentication failed
+			authHeader := r.Header.Get("Authorization")
+			expectedAuthHeader := "Bearer " + cfg.LLMRouterAPIKey
+			cfg.Logger.Warn("Invalid or missing API key",
+				zap.String("receivedAuthHeader", utils.RedactAuthorization(authHeader)),
+				zap.String("expectedAuthHeader", utils.RedactAuthorization(expectedAuthHeader)))
+		}
 		http.Error(w, "Invalid or missing API key", http.StatusUnauthorized)
 		logResponse(cfg.Logger, w)
 		return
 	}
 
-	cfg.Logger.Info("API key validated successfully",
-		zap.String("Authorization", utils.RedactAuthorization(r.Header.Get("Authorization"))))
+	if authManager != nil {
+		cfg.Logger.Debug("Authenticated via identity system")
+	} else {
+		cfg.Logger.Info("API key validated successfully",
+			zap.String("Authorization", utils.RedactAuthorization(r.Header.Get("Authorization"))))
+	}
 
 	if handleProtectedEndpoints(w, r, cfg) {
 		return

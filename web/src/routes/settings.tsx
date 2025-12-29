@@ -1,6 +1,8 @@
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { useState } from 'react';
 import { useGetSettings, useSaveSettings, type BackendConfig, type Settings } from '@/hooks/useSettings';
+import { useCheckAuth, useAPIKeys, useCreateAPIKey, useDeleteAPIKey, useLogout } from '@/hooks/useAuth';
+import { Copy, Check, Trash2, Key } from 'lucide-react';
 
 export const Route = createFileRoute('/settings')({
   component: SettingsPage,

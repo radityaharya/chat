@@ -20,6 +20,7 @@ import {
   useForkConversation,
 } from '@/store';
 import { useModels, useSendMessage } from '@/hooks/useChat';
+import { useCheckAuth } from '@/hooks/useAuth';
 import { useViewportHeight } from '@/hooks/useViewportHeight';
 import { useMobileDetect } from '@/hooks/useMobileDetect';
 import { ChatMessage } from '@/components/chat/ChatMessage';
@@ -58,6 +59,7 @@ function ChatPage() {
   const navigate = useNavigate();
   const apiKey = useApiKey();
   const setApiKey = useSetApiKey();
+  const { data: authStatus, isLoading: isCheckingAuth } = useCheckAuth();
   const messages = useMessages();
   const clearMessages = useClearMessages();
   const deleteMessage = useDeleteMessage();
@@ -106,12 +108,12 @@ function ChatPage() {
     };
   }, [isMobile, sidebarOpen]);
 
-  // Redirect to login if no API key
+  // Redirect to login only if not authenticated via API key or session
   useEffect(() => {
-    if (!apiKey) {
+    if (!isCheckingAuth && !apiKey && !authStatus?.authenticated) {
       navigate({ to: '/login' });
     }
-  }, [apiKey, navigate]);
+  }, [apiKey, authStatus, isCheckingAuth, navigate]);
 
   useEffect(() => {
     if (models && models.length > 0 && !selectedModel) {
@@ -222,12 +224,18 @@ function ChatPage() {
     }
   };
 
-  if (!apiKey) {
+  // Show loading while checking authentication
+  if (isCheckingAuth) {
     return (
       <div className="min-h-screen bg-terminal-bg flex items-center justify-center">
         <Loader size={32} />
       </div>
     );
+  }
+
+  // Redirect to login if not authenticated
+  if (!apiKey && !authStatus?.authenticated) {
+    return null; // Will redirect via useEffect
   }
 
   return (
@@ -264,9 +272,21 @@ function ChatPage() {
               >
                 <PanelLeft className="size-4" />
               </Button>
-              <h1 className="text-sm sm:text-lg font-bold truncate">
-                {activeId && conversations[activeId] ? conversations[activeId].title : 'Chat'}
-              </h1>
+              <div className="flex flex-col min-w-0">
+                <h1 className="text-sm sm:text-lg font-bold truncate">
+                  {activeId && conversations[activeId] ? conversations[activeId].title : 'Chat'}
+                </h1>
+                {authStatus?.user && (
+                  <span className="text-xs text-terminal-muted truncate">
+                    @{authStatus.user.username}
+                  </span>
+                )}
+                {!authStatus?.user && apiKey && (
+                  <span className="text-xs text-terminal-muted truncate">
+                    API Key
+                  </span>
+                )}
+              </div>
             </div>
 
             <div className="flex items-center gap-1 sm:gap-2 shrink-0">
@@ -282,8 +302,8 @@ function ChatPage() {
               <Button
                 variant="ghost"
                 size="icon-sm"
-                onClick={() => navigate({ to: '/settings' })}
-                title="Settings"
+                onClick={() => navigate({ to: '/user/settings' })}
+                title="User Settings"
                 className="text-terminal-muted hover:text-terminal-text"
               >
                 <Settings className="size-4" />

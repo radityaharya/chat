@@ -1,51 +1,52 @@
 {
-	"listening_port": 11411,
-	"llmrouter_api_key_env": "LLMROUTER_API_KEY",
-	"aliases": {
-		"o1": "groq/deepseek-r1-distill-qwen-32b",
-		"o3-mini": "ollama/qwq"
-	},
-	"backends": [
-		{
-			"name": "openai",
-			"base_url": "https://api.openai.com/v1",
-			"prefix": "openai/",
-			"default": true,
-			"require_api_key": true,
-			"key_env_var": "OPENAI_API_KEY"
-		},
-		{
-			"name": "ollama",
-			"base_url": "http://localhost:11434/v1",
-			"prefix": "ollama/",
-			"role_rewrites": {
-				"developer": "system"
-			}
-		},
-		{
-			"name": "groq",
-			"base_url": "https://api.groq.com/openai/v1",
-			"prefix": "groq/",
-			"require_api_key": true,
-			"key_env_var": "GROQ_API_KEY",
-			"role_rewrites": {
-				"developer": "system"
-			},
-			"unsupported_params": [
-				"reasoning_effort"
-			]
-		},
-		{
-			"name": "together",
-			"base_url": "https://api.together.xyz/v1",
-			"prefix": "together/",
-			"require_api_key": true,
-			"api_keys": [
-				"$TOGETHER_API_KEY_1",
-				"$TOGETHER_API_KEY_2",
-				"$TOGETHER_API_KEY_3",
-				"$TOGETHER_API_KEY_4"
-			]
-		}
-	]
+  "listening_port": 11411,
+  "llmrouter_api_key_env": "LLMROUTER_API_KEY",
+  "database_url": "postgres://user:password@localhost:5432/chat?sslmode=disable",
+  "aliases": {
+    "o1": "groq/deepseek-r1-distill-qwen-32b",
+    "o3-mini": "ollama/qwq"
+  },
+  "backends": [
+    {
+      "name": "openai",
+      "base_url": "https://api.openai.com/v1",
+      "prefix": "openai/",
+      "default": true,
+      "require_api_key": true,
+      "key_env_var": "OPENAI_API_KEY"
+    },
+    {
+      "name": "ollama",
+      "base_url": "http://localhost:11434/v1",
+      "prefix": "ollama/",
+      "role_rewrites": {
+        "developer": "system"
+      }
+    },
+    {
+      "name": "groq",
+      "base_url": "https://api.groq.com/openai/v1",
+      "prefix": "groq/",
+      "require_api_key": true,
+      "key_env_var": "GROQ_API_KEY",
+      "role_rewrites": {
+        "developer": "system"
+      },
+      "unsupported_params": [
+        "reasoning_effort"
+      ]
+    },
+    {
+      "name": "together",
+      "base_url": "https://api.together.xyz/v1",
+      "prefix": "together/",
+      "require_api_key": true,
+      "api_keys": [
+        "$TOGETHER_API_KEY_1",
+        "$TOGETHER_API_KEY_2",
+        "$TOGETHER_API_KEY_3",
+        "$TOGETHER_API_KEY_4"
+      ]
+    }
+  ]
 }

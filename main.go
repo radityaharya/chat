@@ -5,9 +5,12 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"os/signal"
+	"syscall"
 
 	"llm-router/internal/config"
 	"llm-router/internal/handler"
+	"llm-router/internal/identity"
 	"llm-router/internal/logging"
 	"llm-router/internal/model"
 	"llm-router/internal/proxy"
@@ -85,6 +88,35 @@ This is what you should set as your API key in Cursor.
 
 	// Initialize proxies based on the loaded configuration
 	proxy.InitializeProxies(cfg.Backends, logger)
+
+	// Initialize identity system if database URL is provided
+	var db identity.Database
+	if cfg.DatabaseURL != "" {
+		logger.Info("Initializing identity system with database")
+		var err error
+		db, err = identity.NewPostgresDB(cfg.DatabaseURL)
+		if err != nil {
+			logger.Fatal("Failed to initialize database", zap.Error(err))
+		}
+		
+		authManager := identity.NewAuthManager(db)
+		handler.SetAuthManager(authManager)
+		logger.Info("Identity system initialized successfully")
+
+		// Set up graceful shutdown for database
+		sigChan := make(chan os.Signal, 1)
+		signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
+		go func() {
+			<-sigChan
+			logger.Info("Shutting down gracefully...")
+			if db != nil {
+				db.Close()
+			}
+			os.Exit(0)
+		}()
+	} else {
+		logger.Info("Identity system disabled (no DATABASE_URL provided)")
+	}
 
 	// Serve static files from web/dist (built frontend)
 	// In development, run the Vite dev server separately
