@@ -3,9 +3,9 @@ import {
   useConversations,
   useActiveConversationId,
   useCreateConversation,
-  useDeleteConversation,
   useSetActiveConversation
 } from '@/store';
+import { useHistory } from '@/hooks/useHistory';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -32,7 +32,7 @@ export function ChatSidebar({ className, isOpen = true, onClose, isMobile = fals
   const activeId = useActiveConversationId();
   const setActiveConversation = useSetActiveConversation();
   const createConversation = useCreateConversation();
-  const deleteConversation = useDeleteConversation();
+  const { deleteConversationWithSync } = useHistory();
 
   const [search, setSearch] = useState('');
   const [deleteId, setDeleteId] = useState<string | null>(null);
@@ -155,8 +155,14 @@ export function ChatSidebar({ className, isOpen = true, onClose, isMobile = fals
             <Button variant="ghost" onClick={() => setDeleteId(null)}>Cancel</Button>
             <Button
               variant="destructive"
-              onClick={() => {
-                if (deleteId) deleteConversation(deleteId);
+              onClick={async () => {
+                if (deleteId) {
+                  try {
+                    await deleteConversationWithSync(deleteId);
+                  } catch (error) {
+                    console.error('Failed to delete conversation:', error);
+                  }
+                }
                 setDeleteId(null);
               }}
             >

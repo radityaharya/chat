@@ -32,6 +32,12 @@ type Database interface {
 	GetAPIKeysByUserID(userID int64) ([]APIKey, error)
 	DeleteAPIKey(id int64) error
 	UpdateAPIKeyLastUsed(id int64) error
+
+	// History operations
+	SaveHistory(userID int64, history *ConversationHistory) error
+	GetAllHistory(userID int64) ([]ConversationHistory, error)
+	GetHistoryByID(userID int64, conversationID string) (*ConversationHistory, error)
+	DeleteHistory(userID int64, conversationID string) error
 }
 
 // PostgresDB implements the Database interface using PostgreSQL
@@ -135,6 +141,22 @@ func (d *PostgresDB) initSchema() error {
 	);
 	CREATE INDEX IF NOT EXISTS idx_sessions_token ON sessions(token);
 	CREATE INDEX IF NOT EXISTS idx_sessions_expires_at ON sessions(expires_at);
+
+	-- Conversation Histories table
+	CREATE TABLE IF NOT EXISTS conversation_histories (
+		id BIGSERIAL PRIMARY KEY,
+		user_id BIGINT NOT NULL,
+		conversation_id TEXT NOT NULL,
+		version BIGINT NOT NULL DEFAULT 1,
+		title TEXT NOT NULL,
+		data JSONB NOT NULL,
+		updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
+		created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
+		FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+		UNIQUE(user_id, conversation_id)
+	);
+	CREATE INDEX IF NOT EXISTS idx_conversation_histories_user_id ON conversation_histories(user_id);
+	CREATE INDEX IF NOT EXISTS idx_conversation_histories_updated_at ON conversation_histories(updated_at);
 	`
 
 	_, err := d.db.Exec(schema)
@@ -293,4 +315,97 @@ func (d *PostgresDB) DeleteAPIKey(id int64) error {
 func (d *PostgresDB) UpdateAPIKeyLastUsed(id int64) error {
 	_, err := d.db.Exec("UPDATE api_keys SET last_used_at = NOW() WHERE id = $1", id)
 	return err
+}
+
+// History operations
+
+func (d *PostgresDB) SaveHistory(userID int64, history *ConversationHistory) error {
+	// Upsert: insert or update if exists
+	err := d.db.QueryRow(`
+		INSERT INTO conversation_histories (user_id, conversation_id, version, title, data, updated_at)
+		VALUES ($1, $2, $3, $4, $5, NOW())
+		ON CONFLICT (user_id, conversation_id)
+		DO UPDATE SET
+			version = conversation_histories.version + 1,
+			title = EXCLUDED.title,
+			data = EXCLUDED.data,
+			updated_at = NOW()
+		RETURNING id, version, created_at, updated_at
+	`, userID, history.ConversationID, history.Version, history.Title, history.Data).Scan(
+		&history.ID, &history.Version, &history.CreatedAt, &history.UpdatedAt)
+
+	if err != nil {
+		return fmt.Errorf("failed to save history: %w", err)
+	}
+
+	history.UserID = userID
+	return nil
+}
+
+func (d *PostgresDB) GetAllHistory(userID int64) ([]ConversationHistory, error) {
+	rows, err := d.db.Query(`
+		SELECT id, user_id, conversation_id, version, title, data, updated_at, created_at
+		FROM conversation_histories
+		WHERE user_id = $1
+		ORDER BY updated_at DESC
+	`, userID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get history: %w", err)
+	}
+	defer rows.Close()
+
+	var histories []ConversationHistory
+	for rows.Next() {
+		var h ConversationHistory
+		if err := rows.Scan(&h.ID, &h.UserID, &h.ConversationID, &h.Version, &h.Title, &h.Data, &h.UpdatedAt, &h.CreatedAt); err != nil {
+			return nil, fmt.Errorf("failed to scan history: %w", err)
+		}
+		histories = append(histories, h)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("error iterating history rows: %w", err)
+	}
+
+	if histories == nil {
+		histories = []ConversationHistory{}
+	}
+
+	return histories, nil
+}
+
+func (d *PostgresDB) GetHistoryByID(userID int64, conversationID string) (*ConversationHistory, error) {
+	var h ConversationHistory
+	err := d.db.QueryRow(`
+		SELECT id, user_id, conversation_id, version, title, data, updated_at, created_at
+		FROM conversation_histories
+		WHERE user_id = $1 AND conversation_id = $2
+	`, userID, conversationID).Scan(&h.ID, &h.UserID, &h.ConversationID, &h.Version, &h.Title, &h.Data, &h.UpdatedAt, &h.CreatedAt)
+
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("failed to get history by id: %w", err)
+	}
+
+	return &h, nil
+}
+
+func (d *PostgresDB) DeleteHistory(userID int64, conversationID string) error {
+	result, err := d.db.Exec("DELETE FROM conversation_histories WHERE user_id = $1 AND conversation_id = $2", userID, conversationID)
+	if err != nil {
+		return fmt.Errorf("failed to delete history: %w", err)
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("failed to get rows affected: %w", err)
+	}
+
+	if rowsAffected == 0 {
+		return fmt.Errorf("conversation not found")
+	}
+
+	return nil
 }

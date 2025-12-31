@@ -25,6 +25,7 @@ const (
 	authCheckPath         = "/v1/auth/check"
 	authSetupPath         = "/v1/auth/setup"
 	authAPIKeysPath       = "/v1/auth/api-keys"
+	historyPath           = "/v1/user/me/history"
 	contentTypeJSON       = "application/json"
 	streamTruePattern     = `"stream":true`
 	peekBufferSize        = 1024
@@ -200,6 +201,25 @@ func handleProtectedEndpoints(w http.ResponseWriter, r *http.Request, cfg *model
 
 		if r.URL.Path == authAPIKeysPath && r.Method == "DELETE" {
 			authManager.DeleteAPIKey(w, r)
+			logResponse(cfg.Logger, w)
+			return true
+		}
+
+		// History endpoints
+		if r.URL.Path == historyPath && r.Method == "GET" {
+			authManager.GetHistory(w, r)
+			logResponse(cfg.Logger, w)
+			return true
+		}
+
+		if r.URL.Path == historyPath && (r.Method == "PUT" || r.Method == "POST") {
+			authManager.SyncHistory(w, r)
+			logResponse(cfg.Logger, w)
+			return true
+		}
+
+		if r.URL.Path == historyPath && r.Method == "DELETE" {
+			authManager.DeleteHistoryItem(w, r)
 			logResponse(cfg.Logger, w)
 			return true
 		}

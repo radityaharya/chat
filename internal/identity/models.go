@@ -1,6 +1,9 @@
 package identity
 
-import "time"
+import (
+	"encoding/json"
+	"time"
+)
 
 // User represents a user account
 type User struct {
@@ -46,4 +49,27 @@ type CreateUserRequest struct {
 // CreateAPIKeyRequest represents an API key creation request
 type CreateAPIKeyRequest struct {
 	Name string `json:"name"`
+}
+
+// ConversationHistory represents a stored conversation with sync metadata
+type ConversationHistory struct {
+	ID             int64           `json:"id,omitempty"`
+	UserID         int64           `json:"user_id,omitempty"`
+	ConversationID string          `json:"conversation_id"`
+	Version        int64           `json:"version"`
+	Title          string          `json:"title"`
+	Data           json.RawMessage `json:"data"` // Stores the full conversation state (messages, checkpoints, etc.)
+	UpdatedAt      time.Time       `json:"updated_at"`
+	CreatedAt      time.Time       `json:"created_at"`
+}
+
+// HistorySyncRequest represents a request to sync conversation histories
+type HistorySyncRequest struct {
+	Conversations []ConversationHistory `json:"conversations"`
+}
+
+// HistorySyncResponse represents the response from a sync operation
+type HistorySyncResponse struct {
+	Conversations []ConversationHistory `json:"conversations"`
+	Conflicts     []string              `json:"conflicts,omitempty"` // IDs of conversations with conflicts
 }

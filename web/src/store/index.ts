@@ -68,6 +68,14 @@ interface UIState {
 
   selectedModel: string | null;
   setSelectedModel: (model: string) => void;
+
+  // Sync state
+  syncStatus: 'idle' | 'syncing' | 'error';
+  lastSyncedAt: number | null;
+  syncError: string | null;
+  setSyncStatus: (status: 'idle' | 'syncing' | 'error') => void;
+  setLastSyncedAt: (timestamp: number | null) => void;
+  setSyncError: (error: string | null) => void;
 }
 
 export const useUIStore = create<UIState>()(
@@ -352,6 +360,14 @@ export const useUIStore = create<UIState>()(
 
       selectedModel: null,
       setSelectedModel: (model) => set({ selectedModel: model }),
+
+      // Sync state
+      syncStatus: 'idle',
+      lastSyncedAt: null,
+      syncError: null,
+      setSyncStatus: (status) => set({ syncStatus: status }),
+      setLastSyncedAt: (timestamp) => set({ lastSyncedAt: timestamp }),
+      setSyncError: (error) => set({ syncError: error }),
     }),
     {
       name: 'chat-ui-store',
@@ -363,6 +379,7 @@ export const useUIStore = create<UIState>()(
         systemPrompt: state.systemPrompt,
         conversations: state.conversations,
         activeConversationId: state.activeConversationId,
+        lastSyncedAt: state.lastSyncedAt,
       }),
     }
   )
@@ -405,6 +422,14 @@ export const useSetSelectedModel = () => useUIStore((s) => s.setSelectedModel);
 export const useCreateCheckpoint = () => useUIStore((s) => s.createCheckpoint);
 export const useRestoreCheckpoint = () => useUIStore((s) => s.restoreCheckpoint);
 export const useForkConversation = () => useUIStore((s) => s.forkConversation);
+
+// Sync state hooks
+export const useSyncStatus = () => useUIStore((s) => s.syncStatus);
+export const useLastSyncedAt = () => useUIStore((s) => s.lastSyncedAt);
+export const useSyncError = () => useUIStore((s) => s.syncError);
+export const useSetSyncStatus = () => useUIStore((s) => s.setSyncStatus);
+export const useSetLastSyncedAt = () => useUIStore((s) => s.setLastSyncedAt);
+export const useSetSyncError = () => useUIStore((s) => s.setSyncError);
 
 // Export Message type
 export type { Message, Conversation, Checkpoint };

@@ -18,9 +18,11 @@ import {
   useRestoreCheckpoint,
   useCheckpoints,
   useForkConversation,
+  useLastSyncedAt,
 } from '@/store';
 import { useModels, useSendMessage } from '@/hooks/useChat';
 import { useCheckAuth } from '@/hooks/useAuth';
+import { useHistory } from '@/hooks/useHistory';
 import { useViewportHeight } from '@/hooks/useViewportHeight';
 import { useMobileDetect } from '@/hooks/useMobileDetect';
 import { ChatMessage } from '@/components/chat/ChatMessage';
@@ -38,7 +40,7 @@ import {
   CheckpointIcon,
   CheckpointTrigger,
 } from '@/components/ai-elements/checkpoint';
-import { MessageSquare, Settings, Trash2, LogOut, PanelLeft, RulerIcon } from 'lucide-react';
+import { MessageSquare, Settings, Trash2, LogOut, PanelLeft, RulerIcon, Cloud, CloudOff } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { nanoid } from 'nanoid';
 import {
@@ -74,10 +76,12 @@ function ChatPage() {
   const createCheckpoint = useCreateCheckpoint();
   const restoreCheckpoint = useRestoreCheckpoint();
   const forkConversation = useForkConversation();
+  const lastSyncedAt = useLastSyncedAt();
 
   const { data: models, isLoading: _isLoadingModels } = useModels();
   const { sendMessage, regenerate, isStreaming, stopStreaming } = useSendMessage();
   const { data: authStatus, isLoading: isCheckingAuth } = useCheckAuth();
+  const { syncHistory, loadHistory, syncStatus } = useHistory();
 
   // Mobile hooks
   useViewportHeight();
@@ -114,6 +118,41 @@ function ChatPage() {
       navigate({ to: '/login' });
     }
   }, [apiKey, authStatus, isCheckingAuth, navigate]);
+
+  // Load history on initial authentication
+  useEffect(() => {
+    if (authStatus?.authenticated && !lastSyncedAt) {
+      loadHistory().catch((error) => {
+        console.error('Failed to load history:', error);
+      });
+    }
+  }, [authStatus, lastSyncedAt, loadHistory]);
+
+  // Auto-sync every 2 minutes when authenticated
+  useEffect(() => {
+    if (!authStatus?.authenticated) return;
+
+    const interval = setInterval(() => {
+      syncHistory().catch((error) => {
+        console.error('Auto-sync failed:', error);
+      });
+    }, 120000); // 2 minutes
+
+    return () => clearInterval(interval);
+  }, [authStatus, syncHistory]);
+
+  // Debounced sync after streaming completes (3 seconds after streaming stops)
+  useEffect(() => {
+    if (!authStatus?.authenticated || messages.length === 0 || isStreaming) return;
+
+    const timeoutId = setTimeout(() => {
+      syncHistory().catch((error) => {
+        console.error('Message sync failed:', error);
+      });
+    }, 3000); // 3 seconds debounce after streaming stops
+
+    return () => clearTimeout(timeoutId);
+  }, [isStreaming, messages.length, authStatus, syncHistory]);
 
 
   useEffect(() => {
@@ -273,6 +312,31 @@ function ChatPage() {
             </div>
 
             <div className="flex items-center gap-1 sm:gap-2 shrink-0">
+              {/* Sync Status Indicator */}
+              {authStatus?.authenticated && activeId && conversations[activeId] && (
+                <div
+                  className="flex items-center gap-1 text-xs text-terminal-muted"
+                  title={
+                    syncStatus.syncing
+                      ? 'Syncing...'
+                      : syncStatus.error
+                        ? `Sync error: ${syncStatus.error}`
+                        : lastSyncedAt
+                          ? `Last synced: ${new Date(lastSyncedAt).toLocaleTimeString()}`
+                          : 'Not synced yet'
+                  }
+                >
+                  {syncStatus.syncing ? (
+                    <Cloud className="size-3 animate-pulse text-terminal-blue" />
+                  ) : syncStatus.error ? (
+                    <CloudOff className="size-3 text-terminal-red" />
+                  ) : lastSyncedAt && conversations[activeId].updatedAt <= lastSyncedAt ? (
+                    <Cloud className="size-3 text-terminal-green" />
+                  ) : (
+                    <CloudOff className="size-3 text-terminal-yellow" />
+                  )}
+                </div>
+              )}
               <Button
                 variant="ghost"
                 size="icon-sm"
