@@ -76,6 +76,10 @@ interface UIState {
   setSyncStatus: (status: 'idle' | 'syncing' | 'error') => void;
   setLastSyncedAt: (timestamp: number | null) => void;
   setSyncError: (error: string | null) => void;
+
+  // Config actions
+  // Config actions
+  // fetchConfig removed, handled by hook
 }
 
 export const useUIStore = create<UIState>()(
@@ -359,7 +363,9 @@ export const useUIStore = create<UIState>()(
       },
 
       selectedModel: null,
-      setSelectedModel: (model) => set({ selectedModel: model }),
+      setSelectedModel: (model) => {
+        set({ selectedModel: model });
+      },
 
       // Sync state
       syncStatus: 'idle',
@@ -368,6 +374,7 @@ export const useUIStore = create<UIState>()(
       setSyncStatus: (status) => set({ syncStatus: status }),
       setLastSyncedAt: (timestamp) => set({ lastSyncedAt: timestamp }),
       setSyncError: (error) => set({ syncError: error }),
+
     }),
     {
       name: 'chat-ui-store',

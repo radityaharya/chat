@@ -73,3 +73,10 @@ type HistorySyncResponse struct {
 	Conversations []ConversationHistory `json:"conversations"`
 	Conflicts     []string              `json:"conflicts,omitempty"` // IDs of conversations with conflicts
 }
+
+// UserConfig represents a user's configuration settings
+type UserConfig struct {
+	UserID       int64           `json:"user_id,omitempty"`
+	DefaultModel string          `json:"default_model"`
+	Data         json.RawMessage `json:"data,omitempty"`
+}

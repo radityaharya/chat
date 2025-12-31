@@ -21,6 +21,7 @@ import {
   useLastSyncedAt,
 } from '@/store';
 import { useModels, useSendMessage } from '@/hooks/useChat';
+import { useConfig, useUpdateConfig } from '@/hooks/useConfig';
 import { useCheckAuth } from '@/hooks/useAuth';
 import { useHistory } from '@/hooks/useHistory';
 import { useViewportHeight } from '@/hooks/useViewportHeight';
@@ -79,6 +80,8 @@ function ChatPage() {
   const lastSyncedAt = useLastSyncedAt();
 
   const { data: models, isLoading: _isLoadingModels } = useModels();
+  const { data: config } = useConfig();
+  const { mutate: updateConfig } = useUpdateConfig();
   const { sendMessage, regenerate, isStreaming, stopStreaming } = useSendMessage();
   const { data: authStatus, isLoading: isCheckingAuth } = useCheckAuth();
   const { syncHistory, loadHistory, syncStatus } = useHistory();
@@ -121,10 +124,12 @@ function ChatPage() {
 
   // Load history on initial authentication
   useEffect(() => {
-    if (authStatus?.authenticated && !lastSyncedAt) {
-      loadHistory().catch((error) => {
-        console.error('Failed to load history:', error);
-      });
+    if (authStatus?.authenticated) {
+      if (!lastSyncedAt) {
+        loadHistory().catch((error) => {
+          console.error('Failed to load history:', error);
+        });
+      }
     }
   }, [authStatus, lastSyncedAt, loadHistory]);
 
@@ -436,7 +441,10 @@ function ChatPage() {
               }
               models={models || []}
               selectedModel={selectedModel}
-              onSelectModel={setSelectedModel}
+              onSelectModel={(model) => {
+                setSelectedModel(model);
+                updateConfig({ default_model: model });
+              }}
             />
           </div>
         </footer>

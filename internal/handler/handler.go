@@ -26,6 +26,7 @@ const (
 	authSetupPath         = "/v1/auth/setup"
 	authAPIKeysPath       = "/v1/auth/api-keys"
 	historyPath           = "/v1/user/me/history"
+	configPath            = "/v1/user/me/config"
 	contentTypeJSON       = "application/json"
 	streamTruePattern     = `"stream":true`
 	peekBufferSize        = 1024
@@ -220,6 +221,19 @@ func handleProtectedEndpoints(w http.ResponseWriter, r *http.Request, cfg *model
 
 		if r.URL.Path == historyPath && r.Method == "DELETE" {
 			authManager.DeleteHistoryItem(w, r)
+			logResponse(cfg.Logger, w)
+			return true
+		}
+
+		// Config endpoints
+		if r.URL.Path == configPath && r.Method == "GET" {
+			authManager.GetConfig(w, r)
+			logResponse(cfg.Logger, w)
+			return true
+		}
+
+		if r.URL.Path == configPath && (r.Method == "PUT" || r.Method == "POST") {
+			authManager.UpdateConfig(w, r)
 			logResponse(cfg.Logger, w)
 			return true
 		}

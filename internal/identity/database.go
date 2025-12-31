@@ -38,6 +38,10 @@ type Database interface {
 	GetAllHistory(userID int64) ([]ConversationHistory, error)
 	GetHistoryByID(userID int64, conversationID string) (*ConversationHistory, error)
 	DeleteHistory(userID int64, conversationID string) error
+
+	// Config operations
+	GetUserConfig(userID int64) (*UserConfig, error)
+	UpdateUserConfig(config *UserConfig) error
 }
 
 // PostgresDB implements the Database interface using PostgreSQL
@@ -157,6 +161,15 @@ func (d *PostgresDB) initSchema() error {
 	);
 	CREATE INDEX IF NOT EXISTS idx_conversation_histories_user_id ON conversation_histories(user_id);
 	CREATE INDEX IF NOT EXISTS idx_conversation_histories_updated_at ON conversation_histories(updated_at);
+	
+	-- User Configs table
+	CREATE TABLE IF NOT EXISTS user_configs (
+		user_id BIGINT PRIMARY KEY,
+		default_model TEXT NOT NULL DEFAULT '',
+		data JSONB,
+		updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
+		FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+	);
 	`
 
 	_, err := d.db.Exec(schema)
@@ -405,6 +418,50 @@ func (d *PostgresDB) DeleteHistory(userID int64, conversationID string) error {
 
 	if rowsAffected == 0 {
 		return fmt.Errorf("conversation not found")
+	}
+
+	return nil
+}
+
+// Config operations
+
+func (d *PostgresDB) GetUserConfig(userID int64) (*UserConfig, error) {
+	var config UserConfig
+	err := d.db.QueryRow(`
+		SELECT user_id, default_model, COALESCE(data, '{}'::jsonb)
+		FROM user_configs
+		WHERE user_id = $1
+	`, userID).Scan(&config.UserID, &config.DefaultModel, &config.Data)
+
+	if err == sql.ErrNoRows {
+		// Return empty config if not found
+		return &UserConfig{UserID: userID}, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("failed to get user config: %w", err)
+	}
+
+	return &config, nil
+}
+
+func (d *PostgresDB) UpdateUserConfig(config *UserConfig) error {
+	var data interface{} = nil
+	if len(config.Data) > 0 {
+		data = config.Data
+	}
+
+	_, err := d.db.Exec(`
+		INSERT INTO user_configs (user_id, default_model, data, updated_at)
+		VALUES ($1, $2, $3, NOW())
+		ON CONFLICT (user_id)
+		DO UPDATE SET
+			default_model = EXCLUDED.default_model,
+			data = EXCLUDED.data,
+			updated_at = NOW()
+	`, config.UserID, config.DefaultModel, data)
+
+	if err != nil {
+		return fmt.Errorf("failed to update user config: %w", err)
 	}
 
 	return nil
