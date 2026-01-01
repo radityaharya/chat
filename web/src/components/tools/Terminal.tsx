@@ -85,14 +85,15 @@ export function Terminal({ className }: { className?: string }) {
     }
   };
 
-  // Auto-scroll to bottom
+  // Auto-scroll to bottom when history changes (but don't auto-focus)
   useEffect(() => {
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
   }, [history]);
 
-  const handleContainerClick = () => {
+  const handleTerminalBodyClick = () => {
+    // Only focus when clicking on the terminal output area, not the header
     if (!isCollapsed) {
       inputRef.current?.focus();
     }
@@ -120,7 +121,6 @@ export function Terminal({ className }: { className?: string }) {
         isExpanded ? "fixed inset-0 z-50 h-full max-h-none! border-t-0" : "",
         className
       )}
-      onClick={handleContainerClick}
     >
       <div
         className="flex items-center px-4 py-2 bg-white/5 border-b border-white/5 shrink-0 select-none cursor-pointer hover:bg-white/10 transition-colors"
@@ -161,8 +161,9 @@ export function Terminal({ className }: { className?: string }) {
         <>
           <div
             ref={scrollRef}
+            onClick={handleTerminalBodyClick}
             className={cn(
-              "flex-1 overflow-y-auto p-4 space-y-4 font-mono scrollbar-thin scrollbar-thumb-white/10 scrollbar-track-transparent",
+              "flex-1 overflow-y-auto p-4 space-y-4 font-mono scrollbar-thin scrollbar-thumb-white/10 scrollbar-track-transparent cursor-text",
               isExpanded ? "h-full" : "min-h-[250px] max-h-[350px]"
             )}
           >
@@ -205,7 +206,6 @@ export function Terminal({ className }: { className?: string }) {
                 onChange={e => setInput(e.target.value)}
                 onKeyDown={handleKeyDown}
                 disabled={isPending}
-                autoFocus
                 autoComplete="off"
                 spellCheck="false"
               />

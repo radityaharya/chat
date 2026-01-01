@@ -17,7 +17,7 @@ interface ContainerToolResponse {
 
 export const containerTool: LocalTool = {
   name: 'container_manager',
-  description: 'Manage a persistent Ubuntu container sandbox. You can run shell commands, read/write files, and manage the container lifecycle. The container is isolated to your user session. Use this to execute code, manipulate files, or perform system tasks in a safe environment. The container is persistent, so changes (installed packages, files) remain until "reset" is called.',
+  description: 'Manage a persistent Ubuntu container sandbox. You can run shell commands, read/write files, and manage the container lifecycle. The container is isolated to your user session. Use this to execute code, manipulate files, or perform system tasks in a safe environment. The container is persistent, so changes (installed packages, files) remain until "reset" is called. Additionally, any code blocks or generated artifacts are automatically uploaded to the workspace for persistence.',
   parameters: z.object({
     action: z.enum(['run_command', 'write_file', 'read_file', 'manage_container']).optional().describe('The action to perform. If omitted, it will be inferred from other parameters.'),
     command: z.string().optional().describe('The shell command to run (required for "run_command"). e.g., "ls -la", "apt-get install -y git", "python3 script.py"'),

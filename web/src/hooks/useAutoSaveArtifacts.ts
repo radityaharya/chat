@@ -4,6 +4,7 @@ import { extractArtifacts } from '@/lib/artifacts';
 import { workspaceApi } from '@/api/workspace';
 import { useSendMessage } from './useChat';
 
+
 export function useAutoSaveArtifacts() {
   const messages = useMessages();
   const activeConversationId = useActiveConversationId();
@@ -17,10 +18,13 @@ export function useAutoSaveArtifacts() {
   const initialized = useRef(false);
 
   // Initialize with existing messages on mount so we don't re-upload old stuff
+  // CRITICAL: This should only run ONCE on mount, not on every message update!
   useEffect(() => {
-    if (!initialized.current && messages.length > 0) {
+    console.log('[PERF] useAutoSaveArtifacts: Init effect running');
+    if (!initialized.current) {
+      // Get current messages at mount time
       messages.forEach(msg => {
-        if (msg.role === 'assistant') {
+        if (msg.role === 'assistant' && !msg.streaming) {
           processedMessageIds.current.add(msg.id);
           const artifacts = extractArtifacts(msg.content);
           artifacts.forEach(artifact => {
@@ -30,26 +34,22 @@ export function useAutoSaveArtifacts() {
       });
       initialized.current = true;
     }
-  }, [messages]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // Run ONLY once on mount
 
+  // Process artifacts only when streaming completes
   useEffect(() => {
-    // Only process if not streaming (wait for completion)
-    // Actually, useChat's isStreaming is global. 
-    // If we want to be safe, we can check if the specific message is streaming?
-    // The store's message object has a `streaming` flag? Yes.
+    console.log('[PERF] useAutoSaveArtifacts: Process effect triggered', { isStreaming, hasActiveConv: !!activeConversationId });
+    // Only process when streaming has stopped
+    if (isStreaming || !activeConversationId) return;
 
-    if (!activeConversationId) return;
-
+    // When streaming stops, process all messages
     messages.forEach(async (msg) => {
       // We only care about assistant messages
       if (msg.role !== 'assistant') return;
 
       // We only care if message is NOT streaming (complete)
       if (msg.streaming) return;
-
-      // Check if we already processed artifacts for this message fully? 
-      // Or check individual artifacts?
-      // Re-extracting artifacts is cheap enough for now.
 
       const artifacts = extractArtifacts(msg.content);
 
@@ -74,5 +74,7 @@ export function useAutoSaveArtifacts() {
       }
     });
 
-  }, [messages, activeConversationId]);
+    // Only run when streaming status changes (from true to false)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isStreaming, activeConversationId]);
 }

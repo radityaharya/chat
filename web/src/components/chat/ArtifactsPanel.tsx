@@ -43,20 +43,46 @@ export function ArtifactsPanel() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const activeConversationId = useActiveConversationId();
 
-  // Extract all artifacts from messages
+  // CRITICAL FIX: Use ref to cache artifacts and only update when streaming stops
+  const lastArtifactsRef = useRef<{ message: any, artifacts: CodeArtifact[] }[]>([]);
+  const wasStreamingRef = useRef(false);
+
+  // Check if ANY message is currently streaming
+  const isStreaming = messages.some(m => m.streaming);
+
+  // Extract all artifacts from messages  
+  // ONLY process when streaming status changes from true to false
   const artifactsByMessage = useMemo(() => {
-    return messages
-      .filter(m => m.role === 'assistant')
-      .map(message => {
-        const artifacts = extractArtifacts(message.content);
-        if (artifacts.length === 0) return null;
-        return {
-          message,
-          artifacts
-        };
-      })
-      .filter(item => item !== null) as { message: typeof messages[0], artifacts: CodeArtifact[] }[];
-  }, [messages]);
+    console.log('[PERF] ArtifactsPanel useMemo triggered', { isStreaming, messagesCount: messages.length });
+
+    // If streaming, return cached result (don't reprocess)
+    if (isStreaming) {
+      console.log('[PERF] ArtifactsPanel: Streaming active, returning cache');
+      wasStreamingRef.current = true;
+      return lastArtifactsRef.current;
+    }
+
+    // If we just stopped streaming OR first load, reprocess
+    if (wasStreamingRef.current || lastArtifactsRef.current.length === 0) {
+      console.log('[PERF] ArtifactsPanel: Streaming stopped, extracting artifacts');
+      wasStreamingRef.current = false;
+
+      const newArtifacts = messages
+        .filter(m => m.role === 'assistant' && !m.streaming)
+        .map(message => {
+          const artifacts = extractArtifacts(message.content);
+          if (artifacts.length === 0) return null;
+          return { message, artifacts };
+        })
+        .filter(item => item !== null) as { message: typeof messages[0], artifacts: CodeArtifact[] }[];
+
+      lastArtifactsRef.current = newArtifacts;
+      return newArtifacts;
+    }
+
+    // Return cached if nothing changed
+    return lastArtifactsRef.current;
+  }, [isStreaming, messages]);
 
   const [searchQuery, setSearchQuery] = useState('');
 

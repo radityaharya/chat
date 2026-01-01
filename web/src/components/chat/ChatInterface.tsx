@@ -155,6 +155,7 @@ export function ChatInterface() {
 
   // Debounced sync after streaming completes (3 seconds after streaming stops)
   useEffect(() => {
+    console.log('[PERF] ChatInterface: Sync effect triggered', { isStreaming, msgCount: messages.length });
     if (!authStatus?.authenticated || messages.length === 0 || isStreaming) return;
 
     const timeoutId = setTimeout(() => {
@@ -179,6 +180,7 @@ export function ChatInterface() {
 
   // Process queue when not streaming
   useEffect(() => {
+    console.log('[PERF] ChatInterface: Queue effect triggered', { isStreaming, queueLen: queue.length });
     if (!isStreaming && queue.length > 0 && selectedModel) {
       const nextItem = queue[0];
       setQueue((prev) => prev.slice(1));
@@ -192,7 +194,9 @@ export function ChatInterface() {
       };
       processQueue();
     }
-  }, [isStreaming, queue, selectedModel, messages, sendMessage, systemPrompt]);
+    // CRITICAL: Don't include 'messages' or 'sendMessage' in deps - causes re-run on every chunk!
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isStreaming, queue.length, selectedModel, systemPrompt]);
 
   const handleSendMessage = async (content: string, attachments?: File[]) => {
     if (!selectedModel) {

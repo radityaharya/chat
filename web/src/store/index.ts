@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
+import { useShallow } from 'zustand/react/shallow';
 import { nanoid } from 'nanoid';
 import { tools } from '@/tools';
 import type { ToolUIPart } from 'ai';
@@ -196,42 +197,53 @@ export const useUIStore = create<UIState>()(
 
       updateMessage: (id, content, streaming, parts, images) =>
         set((state) => {
+          console.log('[PERF] updateMessage called', { id: id.slice(-8), contentLength: content.length, streaming });
           const activeId = state.activeConversationId;
           if (!activeId || !state.conversations[activeId]) return {};
 
           const chat = { ...state.conversations[activeId] };
-          chat.messages = chat.messages.map((msg) => {
-            if (msg.id !== id) return msg;
 
-            let newParts = msg.parts || [];
-            if (parts) {
-              const nextParts = [...newParts];
-              parts.forEach((inc: any) => {
-                const incId = inc.toolCallId;
-                const idx = incId ? nextParts.findIndex((p: any) => p.toolCallId === incId) : -1;
-                if (idx !== -1) {
-                  nextParts[idx] = inc;
-                } else {
-                  nextParts.push(inc);
-                }
-              });
-              newParts = nextParts;
-            }
+          // CRITICAL OPTIMIZATION: Only mutate the specific message, keep other references
+          const msgIndex = chat.messages.findIndex((msg) => msg.id === id);
+          if (msgIndex === -1) return {}; // Message not found
 
-            // Update images
-            let newImages = msg.images || [];
-            if (images) {
-              newImages = images;
-            }
+          const msg = chat.messages[msgIndex];
+          let newParts = msg.parts || [];
+          if (parts) {
+            const nextParts = [...newParts];
+            parts.forEach((inc: any) => {
+              const incId = inc.toolCallId;
+              const idx = incId ? nextParts.findIndex((p: any) => p.toolCallId === incId) : -1;
+              if (idx !== -1) {
+                nextParts[idx] = inc;
+              } else {
+                nextParts.push(inc);
+              }
+            });
+            newParts = nextParts;
+          }
 
-            return {
-              ...msg,
-              content,
-              ...(streaming !== undefined && { streaming }),
-              parts: newParts,
-              images: newImages.length > 0 ? newImages : undefined,
-            };
-          });
+          // Update images
+          let newImages = msg.images || [];
+          if (images) {
+            newImages = images;
+          }
+
+          // Create new message object with updates
+          const updatedMessage = {
+            ...msg,
+            content,
+            ...(streaming !== undefined && { streaming }),
+            parts: newParts,
+            images: newImages.length > 0 ? newImages : undefined,
+          };
+
+          // Create new array with only the changed message replaced
+          chat.messages = [
+            ...chat.messages.slice(0, msgIndex),
+            updatedMessage,
+            ...chat.messages.slice(msgIndex + 1)
+          ];
           chat.updatedAt = Date.now();
 
           return {
@@ -409,12 +421,14 @@ export const useUIStore = create<UIState>()(
       name: 'chat-ui-store',
       storage: createJSONStorage(() => localStorage),
       partialize: (state) => ({
+        // CRITICAL: DO NOT persist conversations - causes OOM with large data
+        // Conversations are synced with backend via useHistory hook
         darkMode: state.darkMode,
         apiKey: state.apiKey,
         selectedModel: state.selectedModel,
         systemPrompt: state.systemPrompt,
-        conversations: state.conversations,
-        activeConversationId: state.activeConversationId,
+        // conversations: state.conversations, // REMOVED - too large for localStorage
+        activeConversationId: state.activeConversationId, // Keep this so we know which to load
         lastSyncedAt: state.lastSyncedAt,
         enabledTools: state.enabledTools,
         artifactsPanelOpen: state.artifactsPanelOpen,
@@ -440,10 +454,12 @@ export const useSetActiveConversation = () => useUIStore((s) => s.setActiveConve
 const EMPTY_MESSAGES: Message[] = [];
 const EMPTY_CHECKPOINTS: Checkpoint[] = [];
 
-export const useMessages = () => useUIStore((s) => {
+export const useMessages = () => useUIStore(useShallow((s) => {
   const chat = s.activeConversationId ? s.conversations[s.activeConversationId] : null;
-  return chat ? chat.messages : EMPTY_MESSAGES;
-});
+  const messages = chat ? chat.messages : EMPTY_MESSAGES;
+  console.log('[PERF] useMessages selector called', { count: messages.length, hasStreaming: messages.some(m => m.streaming) });
+  return messages;
+})); // CRITICAL: Use useShallow to prevent unnecessary re-renders
 
 export const useCheckpoints = () => useUIStore((s) => {
   const chat = s.activeConversationId ? s.conversations[s.activeConversationId] : null;

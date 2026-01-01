@@ -1,5 +1,5 @@
 
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import {
   Message,
   MessageAttachment,
@@ -106,8 +106,16 @@ function parseThinkingTags(content: string): ParsedContent {
 
 
 export function ChatMessage({ message, onRegenerate, onDelete, onCheckpoint, onFork }: ChatMessageProps) {
+  console.log('[PERF] ChatMessage render', { id: message.id.slice(-8), streaming: message.streaming, contentLength: message.content.length });
+
   const [copied, setCopied] = useState(false);
-  const parsed = parseThinkingTags(message.content);
+
+  // OPTIMIZATION: Memoize expensive parsing operations
+  const parsed = useMemo(() => {
+    console.log('[PERF] parseThinkingTags running', { id: message.id.slice(-8) });
+    return parseThinkingTags(message.content);
+  }, [message.content, message.id]);
+
   const hasThinking = parsed.thinking !== null;
   const hasTools = message.parts && message.parts.length > 0;
   const hasImages = message.images && message.images.length > 0;
@@ -178,8 +186,12 @@ export function ChatMessage({ message, onRegenerate, onDelete, onCheckpoint, onF
     return segments;
   };
 
-  // Split content into segments for inline rendering
-  const contentSegments = splitContentWithUIResponses(parsed.response);
+  // OPTIMIZATION: Memoize content segments to avoid re-parsing on every render
+  // Only re-compute when the actual content changes or streaming status changes
+  const contentSegments = useMemo(
+    () => splitContentWithUIResponses(parsed.response),
+    [parsed.response]
+  );
 
   return (
     <Message id={`message-${message.id}`} from={message.role} className="group/message">
@@ -219,7 +231,19 @@ export function ChatMessage({ message, onRegenerate, onDelete, onCheckpoint, onF
             {contentSegments.length > 0 ? (
               contentSegments.map((segment, index) => {
                 if (segment.type === 'text') {
-                  // Further split text segments into artifacts
+                  // OPTIMIZATION: Skip expensive artifact parsing during streaming
+                  // Only parse artifacts after message is complete
+                  // if (message.streaming) {
+                  //   console.log('[PERF] ChatMessage: Rendering streaming text', { contentLength: (segment.content as string).length });
+                  //   // During streaming, just render as plain markdown
+                  //   return (
+                  //     <MessageResponse key={index}>
+                  //       {segment.content as string}
+                  //     </MessageResponse>
+                  //   );
+                  // }
+
+                  // After streaming completes, split into artifacts
                   const artifactSegments = splitContentWithArtifacts(segment.content);
                   return (
                     <div key={index} className="flex flex-col gap-2">
