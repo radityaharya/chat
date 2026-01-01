@@ -41,7 +41,7 @@ func main() {
 	}
 
 	// Initialize command-line flags
-	configFile, llmRouterAPIKeyEnv, llmRouterAPIKey, listeningPort, logLevel := config.InitFlags()
+	configFile, llmRouterAPIKeyEnv, llmRouterAPIKey, listeningPort, logLevel, exaAPIKey := config.InitFlags()
 
 	// Initialize the logger
 	logger, err := logging.NewLogger(logLevel)
@@ -54,6 +54,12 @@ func main() {
 	cfg, err := config.LoadConfig(configFile, llmRouterAPIKeyEnv, llmRouterAPIKey, listeningPort, defaultConfig, logger)
 	if err != nil {
 		logger.Fatal("Failed to load configuration", zap.Error(err))
+	}
+
+	// Apply Exa API key override from command line if provided
+	if exaAPIKey != "" {
+		cfg.ExaAPIKey = exaAPIKey
+		logger.Info("Exa API key override applied from command line")
 	}
 
 	// If using a generated key, print a helpful message

@@ -28,6 +28,7 @@ const (
 	historyPath           = "/v1/user/me/history"
 	configPath            = "/v1/user/me/config"
 	attachmentsPath       = "/v1/attachments/"
+	exaToolPath           = "/v1/tools/exa"
 	contentTypeJSON       = "application/json"
 	streamTruePattern     = `"stream":true`
 	peekBufferSize        = 1024
@@ -248,6 +249,13 @@ func handleProtectedEndpoints(w http.ResponseWriter, r *http.Request, cfg *model
 	// Attachment upload endpoint (protected)
 	if r.URL.Path == "/v1/attachments/upload" && r.Method == "POST" {
 		HandleAttachmentUpload(w, r, cfg)
+		logResponse(cfg.Logger, w)
+		return true
+	}
+
+	// Exa tool endpoint (protected)
+	if r.URL.Path == exaToolPath && r.Method == "POST" {
+		HandleExaTool(w, r, cfg)
 		logResponse(cfg.Logger, w)
 		return true
 	}

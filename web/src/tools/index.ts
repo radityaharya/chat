@@ -11,6 +11,7 @@ import { hashTool } from './implementations/hash';
 import { loremTool } from './implementations/lorem';
 import { colorTool } from './implementations/color';
 import { comulineTool } from './implementations/comuline';
+import { exaTool } from './implementations/exa';
 import { type LocalTool } from './types';
 
 export const tools: Record<string, LocalTool> = {
@@ -26,6 +27,7 @@ export const tools: Record<string, LocalTool> = {
   [loremTool.name]: loremTool,
   [colorTool.name]: colorTool,
   [comulineTool.name]: comulineTool,
+  [exaTool.name]: exaTool,
 };
 
 export const getToolDefinitions = () => {
