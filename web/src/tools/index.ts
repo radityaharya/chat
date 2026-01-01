@@ -12,6 +12,7 @@ import { loremTool } from './implementations/lorem';
 import { colorTool } from './implementations/color';
 import { comulineTool } from './implementations/comuline';
 import { exaTool } from './implementations/exa';
+import { containerTool } from './implementations/container';
 import { type LocalTool } from './types';
 import {
   Calculator,
@@ -25,6 +26,7 @@ import {
   Palette,
   Terminal,
   Search,
+  Box,
   type LucideIcon
 } from 'lucide-react';
 
@@ -46,6 +48,7 @@ export const tools: Record<string, ClientSideTool> = {
   [colorTool.name]: { ...colorTool, icon: Palette },
   [comulineTool.name]: { ...comulineTool, icon: Terminal },
   [exaTool.name]: { ...exaTool, icon: Search },
+  [containerTool.name]: { ...containerTool, icon: Box },
 };
 
 export const getToolDefinitions = () => {

@@ -22,18 +22,19 @@ function RootComponent() {
     <>
       <Outlet />
       {process.env.NODE_ENV === 'development' && (
-        <TanStackDevtools
-          config={{
-            position: 'bottom-right',
-          }}
-          plugins={[
-            {
-              name: 'Tanstack Router',
-              render: <TanStackRouterDevtoolsPanel />,
-            },
-            TanStackQueryDevtools,
-          ]}
-        />
+        // <TanStackDevtools
+        //   config={{
+        //     position: 'bottom-left',
+        //   }}
+        //   plugins={[
+        //     {
+        //       name: 'Tanstack Router',
+        //       render: <TanStackRouterDevtoolsPanel />,
+        //     },
+        //     TanStackQueryDevtools,
+        //   ]}
+        // />
+        <div></div>
       )}
     </>
   );

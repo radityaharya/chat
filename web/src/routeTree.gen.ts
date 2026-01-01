@@ -13,6 +13,7 @@ import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as UserSettingsRouteImport } from './routes/user/settings'
+import { Route as CConversationIdRouteImport } from './routes/c/$conversationId'
 
 const SettingsRoute = SettingsRouteImport.update({
   id: '/settings',
@@ -34,17 +35,24 @@ const UserSettingsRoute = UserSettingsRouteImport.update({
   path: '/user/settings',
   getParentRoute: () => rootRouteImport,
 } as any)
+const CConversationIdRoute = CConversationIdRouteImport.update({
+  id: '/c/$conversationId',
+  path: '/c/$conversationId',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/login': typeof LoginRoute
   '/settings': typeof SettingsRoute
+  '/c/$conversationId': typeof CConversationIdRoute
   '/user/settings': typeof UserSettingsRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/login': typeof LoginRoute
   '/settings': typeof SettingsRoute
+  '/c/$conversationId': typeof CConversationIdRoute
   '/user/settings': typeof UserSettingsRoute
 }
 export interface FileRoutesById {
@@ -52,20 +60,33 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/login': typeof LoginRoute
   '/settings': typeof SettingsRoute
+  '/c/$conversationId': typeof CConversationIdRoute
   '/user/settings': typeof UserSettingsRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/login' | '/settings' | '/user/settings'
+  fullPaths:
+    | '/'
+    | '/login'
+    | '/settings'
+    | '/c/$conversationId'
+    | '/user/settings'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/login' | '/settings' | '/user/settings'
-  id: '__root__' | '/' | '/login' | '/settings' | '/user/settings'
+  to: '/' | '/login' | '/settings' | '/c/$conversationId' | '/user/settings'
+  id:
+    | '__root__'
+    | '/'
+    | '/login'
+    | '/settings'
+    | '/c/$conversationId'
+    | '/user/settings'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   LoginRoute: typeof LoginRoute
   SettingsRoute: typeof SettingsRoute
+  CConversationIdRoute: typeof CConversationIdRoute
   UserSettingsRoute: typeof UserSettingsRoute
 }
 
@@ -99,6 +120,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof UserSettingsRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/c/$conversationId': {
+      id: '/c/$conversationId'
+      path: '/c/$conversationId'
+      fullPath: '/c/$conversationId'
+      preLoaderRoute: typeof CConversationIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
@@ -106,6 +134,7 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   LoginRoute: LoginRoute,
   SettingsRoute: SettingsRoute,
+  CConversationIdRoute: CConversationIdRoute,
   UserSettingsRoute: UserSettingsRoute,
 }
 export const routeTree = rootRouteImport

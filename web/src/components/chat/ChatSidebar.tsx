@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useNavigate } from '@tanstack/react-router';
 import {
   useConversations,
   useActiveConversationId,
@@ -28,6 +29,7 @@ interface ChatSidebarProps {
 }
 
 export function ChatSidebar({ className, isOpen = true, onClose, isMobile = false }: ChatSidebarProps) {
+  const navigate = useNavigate();
   const conversations = useConversations();
   const activeId = useActiveConversationId();
   const setActiveConversation = useSetActiveConversation();
@@ -42,7 +44,10 @@ export function ChatSidebar({ className, isOpen = true, onClose, isMobile = fals
     .sort((a, b) => b.updatedAt - a.updatedAt);
 
   const handleCreateChat = () => {
-    createConversation();
+    const newId = createConversation();
+    if (newId) {
+      navigate({ to: `/c/${newId}` });
+    }
     setSearch('');
     if (isMobile && onClose) {
       onClose();
@@ -51,6 +56,7 @@ export function ChatSidebar({ className, isOpen = true, onClose, isMobile = fals
 
   const handleSelectChat = (chatId: string) => {
     setActiveConversation(chatId);
+    navigate({ to: `/c/${chatId}` });
     if (isMobile && onClose) {
       onClose();
     }
@@ -59,7 +65,7 @@ export function ChatSidebar({ className, isOpen = true, onClose, isMobile = fals
   return (
     <div
       className={cn(
-        "flex flex-col h-full bg-terminal-surface border-r border-terminal-border flex-shrink-0 drawer-transition",
+        "flex flex-col h-full bg-terminal-surface border-r border-terminal-border shrink-0 drawer-transition",
         isMobile ? [
           "fixed top-0 left-0 bottom-0 z-50 w-[280px] sm:w-80",
           isOpen ? "translate-x-0" : "-translate-x-full"
@@ -102,7 +108,7 @@ export function ChatSidebar({ className, isOpen = true, onClose, isMobile = fals
         </div>
       </div>
 
-      <ScrollArea className="flex-1">
+      <ScrollArea className="flex-1 h-px">
         <div className="p-2 space-y-1">
           {filteredChats.length === 0 ? (
             <div className="text-center text-xs text-muted-foreground py-8">
@@ -120,7 +126,7 @@ export function ChatSidebar({ className, isOpen = true, onClose, isMobile = fals
                   )}
                   onClick={() => handleSelectChat(chat.id)}
                 >
-                  <MessageSquare className="mr-2 size-3.5 flex-shrink-0 opacity-70" />
+                  <MessageSquare className="mr-2 size-3.5 shrink-0 opacity-70" />
                   <span className="truncate">{chat.title || "New Chat"}</span>
                 </Button>
                 <Button

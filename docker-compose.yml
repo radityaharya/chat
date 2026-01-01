@@ -11,6 +11,8 @@ services:
       - "11411:11411"
     volumes:
       - ./config.json:/app/config.json
+      - ./data:/app/data
+      - /var/run/docker.sock:/var/run/docker.sock
 
 networks:
   chat:

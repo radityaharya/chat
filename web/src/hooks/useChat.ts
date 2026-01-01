@@ -1,9 +1,10 @@
 import { useState, useRef } from 'react';
 import { useQuery, useMutation } from '@tanstack/react-query';
-import { useApiKey, useAddMessage, useUpdateMessage, type Message, useSetMessages, useEnabledTools } from '@/store';
+import { useApiKey, useAddMessage, useUpdateMessage, type Message, useSetMessages, useEnabledTools, useActiveConversationId } from '@/store';
 import { getToolDefinitions, tools } from '@/tools';
 import { UI_RESPONSE_GUIDE } from '@/lib/ui-response-guide';
 import { parseFiles } from '@/lib/file-parser';
+import { workspaceApi } from '@/api/workspace';
 import type { ToolUIPart } from 'ai';
 
 const API_BASE_URL = '/api';
@@ -89,6 +90,7 @@ export function useSendMessage() {
   const updateMessage = useUpdateMessage();
   const setMessages = useSetMessages();
   const enabledTools = useEnabledTools();
+  const activeConversationId = useActiveConversationId();
   const [isStreaming, setIsStreaming] = useState(false);
   const abortControllerRef = useRef<AbortController | null>(null);
 
@@ -418,11 +420,39 @@ export function useSendMessage() {
 
     if (systemPrompt && systemPrompt.trim()) {
       // Always append UI response guide to user's system prompt
-      const fullSystemPrompt = systemPrompt + UI_RESPONSE_GUIDE;
+      let fullSystemPrompt = systemPrompt + UI_RESPONSE_GUIDE;
+
+      // Inject workspace files if available
+      if (activeConversationId) {
+        try {
+          const files = await workspaceApi.listFiles(activeConversationId);
+          if (files.length > 0) {
+            const fileList = files.map(f => `- ${f.name} (${f.size} bytes)`).join('\n');
+            fullSystemPrompt += `\n\nCurrent Workspace Files:\n${fileList}`;
+          }
+        } catch (e) {
+          console.error("Failed to inject file list", e);
+        }
+      }
+
       currentMessages = [{ role: 'system', content: fullSystemPrompt }, ...currentMessages];
     } else {
       // If no custom system prompt, just use the UI guide
-      currentMessages = [{ role: 'system', content: UI_RESPONSE_GUIDE.trim() }, ...currentMessages];
+      let prompt = UI_RESPONSE_GUIDE.trim();
+
+      // Inject workspace files if available
+      if (activeConversationId) {
+        try {
+          const files = await workspaceApi.listFiles(activeConversationId);
+          if (files.length > 0) {
+            const fileList = files.map(f => `- ${f.name} (${f.size} bytes)`).join('\n');
+            prompt += `\n\nCurrent Workspace Files:\n${fileList}`;
+          }
+        } catch (e) {
+          console.error("Failed to inject file list", e);
+        }
+      }
+      currentMessages = [{ role: 'system', content: prompt }, ...currentMessages];
     }
 
     // Process attachments
@@ -579,11 +609,40 @@ export function useSendMessage() {
 
     if (systemPrompt && systemPrompt.trim()) {
       // Always append UI response guide to user's system prompt
-      const fullSystemPrompt = systemPrompt + UI_RESPONSE_GUIDE;
+      let fullSystemPrompt = systemPrompt + UI_RESPONSE_GUIDE;
+
+      // Inject workspace files if available
+      if (activeConversationId) {
+        try {
+          const files = await workspaceApi.listFiles(activeConversationId);
+          if (files.length > 0) {
+            const fileList = files.map(f => `- ${f.name} (${f.size} bytes)`).join('\n');
+            fullSystemPrompt += `\n\nCurrent Workspace Files:\n${fileList}`;
+          }
+        } catch (e) {
+          console.error("Failed to inject file list", e);
+        }
+      }
+
       apiMessages = [{ role: 'system', content: fullSystemPrompt }, ...apiMessages];
     } else {
       // If no custom system prompt, just use the UI guide
-      apiMessages = [{ role: 'system', content: UI_RESPONSE_GUIDE.trim() }, ...apiMessages];
+      let prompt = UI_RESPONSE_GUIDE.trim();
+
+      // Inject workspace files if available
+      if (activeConversationId) {
+        try {
+          const files = await workspaceApi.listFiles(activeConversationId);
+          if (files.length > 0) {
+            const fileList = files.map(f => `- ${f.name} (${f.size} bytes)`).join('\n');
+            prompt += `\n\nCurrent Workspace Files:\n${fileList}`;
+          }
+        } catch (e) {
+          console.error("Failed to inject file list", e);
+        }
+      }
+
+      apiMessages = [{ role: 'system', content: prompt }, ...apiMessages];
     }
 
     // Add new assistant placeholder

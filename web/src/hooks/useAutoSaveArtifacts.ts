@@ -1,0 +1,78 @@
+import { useEffect, useRef } from 'react';
+import { useMessages, useActiveConversationId } from '@/store';
+import { extractArtifacts } from '@/lib/artifacts';
+import { workspaceApi } from '@/api/workspace';
+import { useSendMessage } from './useChat';
+
+export function useAutoSaveArtifacts() {
+  const messages = useMessages();
+  const activeConversationId = useActiveConversationId();
+  const { isStreaming } = useSendMessage();
+
+  // Track processed artifact IDs to avoid duplicate uploads in session
+  const processedArtifactIds = useRef<Set<string>>(new Set());
+
+  // Track processed message IDs to initialization
+  const processedMessageIds = useRef<Set<string>>(new Set());
+  const initialized = useRef(false);
+
+  // Initialize with existing messages on mount so we don't re-upload old stuff
+  useEffect(() => {
+    if (!initialized.current && messages.length > 0) {
+      messages.forEach(msg => {
+        if (msg.role === 'assistant') {
+          processedMessageIds.current.add(msg.id);
+          const artifacts = extractArtifacts(msg.content);
+          artifacts.forEach(artifact => {
+            processedArtifactIds.current.add(artifact.id);
+          });
+        }
+      });
+      initialized.current = true;
+    }
+  }, [messages]);
+
+  useEffect(() => {
+    // Only process if not streaming (wait for completion)
+    // Actually, useChat's isStreaming is global. 
+    // If we want to be safe, we can check if the specific message is streaming?
+    // The store's message object has a `streaming` flag? Yes.
+
+    if (!activeConversationId) return;
+
+    messages.forEach(async (msg) => {
+      // We only care about assistant messages
+      if (msg.role !== 'assistant') return;
+
+      // We only care if message is NOT streaming (complete)
+      if (msg.streaming) return;
+
+      // Check if we already processed artifacts for this message fully? 
+      // Or check individual artifacts?
+      // Re-extracting artifacts is cheap enough for now.
+
+      const artifacts = extractArtifacts(msg.content);
+
+      for (const artifact of artifacts) {
+        // Must be complete and have a title (filename)
+        if (!artifact.isIncomplete && artifact.title && !processedArtifactIds.current.has(artifact.id)) {
+          // It's a candidate for auto-save
+          processedArtifactIds.current.add(artifact.id);
+
+          try {
+            const blob = new Blob([artifact.code], { type: 'text/plain' });
+            const file = new File([blob], artifact.title);
+            console.log(`[AutoSave] Uploading artifact: ${artifact.title}`);
+            await workspaceApi.uploadFile(activeConversationId, file);
+            // Could add toast here
+          } catch (error) {
+            console.error(`[AutoSave] Failed to save ${artifact.title}`, error);
+            // Remove from processed so we might retry later? 
+            // Or better to leave it to avoid spamming errors.
+          }
+        }
+      }
+    });
+
+  }, [messages, activeConversationId]);
+}

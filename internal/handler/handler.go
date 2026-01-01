@@ -2,13 +2,17 @@ package handler
 
 import (
 	"bytes"
+	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
+	"path/filepath"
 	"strings"
 
 	"llm-router/internal/identity"
 	"llm-router/internal/model"
 	"llm-router/internal/proxy"
+	"llm-router/internal/tools/containers"
 	"llm-router/internal/utils"
 
 	"go.uber.org/zap"
@@ -29,6 +33,7 @@ const (
 	configPath            = "/v1/user/me/config"
 	attachmentsPath       = "/v1/attachments/"
 	exaToolPath           = "/v1/tools/exa"
+	containerToolPath     = "/v1/tools/container"
 	contentTypeJSON       = "application/json"
 	streamTruePattern     = `"stream":true`
 	peekBufferSize        = 1024
@@ -260,6 +265,24 @@ func handleProtectedEndpoints(w http.ResponseWriter, r *http.Request, cfg *model
 		return true
 	}
 
+	// Container tool endpoint (protected)
+	if r.URL.Path == containerToolPath && r.Method == "POST" {
+		HandleContainerTool(w, r, cfg)
+		logResponse(cfg.Logger, w)
+		return true
+	}
+
+	// Workspace endpoints (protected)
+	// /v1/workspaces/{conversationId}/files OR /v1/workspaces/{conversationId}/files/{filename}
+	if strings.HasPrefix(r.URL.Path, "/v1/workspaces/") && strings.Contains(r.URL.Path, "/files") {
+		// Method check handled inside HandleWorkspaceFiles or here
+		if r.Method == "GET" || r.Method == "POST" {
+			HandleWorkspaceFiles(w, r, cfg)
+			logResponse(cfg.Logger, w)
+			return true
+		}
+	}
+
 	return false
 }
 
@@ -327,4 +350,337 @@ func routeRequestThroughProxy(r *http.Request, w http.ResponseWriter, logger *za
 			zap.String("path", r.URL.Path))
 		http.Error(w, "No suitable backend configured", http.StatusBadGateway)
 	}
+}
+
+// HandleContainerTool handles requests to the container tool
+func HandleContainerTool(w http.ResponseWriter, r *http.Request, cfg *model.Config) {
+	// 1. Authenticate and get User ID
+	session, _ := authManager.GetSession(r)
+	if session == nil {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	// 2. Parse Request
+	var req struct {
+		Action          string `json:"action"`
+		ContainerAction string `json:"container_action,omitempty"`
+		Command         string `json:"command,omitempty"`
+		Path            string `json:"path,omitempty"`
+		Content         string `json:"content,omitempty"`
+		Name            string `json:"name,omitempty"` // Optional override check? No, we force isolation
+		WorkDir         string `json:"work_dir,omitempty"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	// 3. Enforce Isolation
+	// Container name is fixed based on User ID
+	containerName := fmt.Sprintf("llm-sandbox-%d", session.UserID)
+
+	// 4. Initialize Client
+	cli, err := containers.NewClient("", cfg.Logger) // Use default host (socket or env)
+	if err != nil {
+		cfg.Logger.Error("failed to create docker client", zap.Error(err))
+		http.Error(w, "failed to initialize container backend", http.StatusInternalServerError)
+		return
+	}
+	defer cli.Close()
+
+	// 5. Execute Action
+	ctx := r.Context()
+	response := make(map[string]interface{})
+
+	switch req.Action {
+	case "manage_container":
+		info, err := cli.Manage(ctx, req.ContainerAction, containerName)
+		if err != nil {
+			response["error"] = err.Error()
+			response["success"] = false
+		} else {
+			response["success"] = true
+			response["data"] = info
+		}
+
+	case "run_command":
+		if req.Command == "" {
+			response["error"] = "command is required"
+			response["success"] = false
+		} else {
+			// Split command string into args? Or assume user provided full shell command?
+			// Use sh -c to allow complex commands
+			cmd := []string{"/bin/sh", "-c", req.Command}
+			output, exitCode, err := cli.Execute(ctx, containerName, cmd, req.WorkDir)
+			if err != nil {
+				response["error"] = err.Error()
+				response["success"] = false
+			} else {
+				response["success"] = true
+				response["output"] = output
+				response["exit_code"] = exitCode
+			}
+		}
+
+	case "write_file":
+		if req.Path == "" || req.Content == "" {
+			response["error"] = "path and content are required"
+			response["success"] = false
+		} else {
+			err := cli.WriteFile(ctx, containerName, req.Path, []byte(req.Content))
+			if err != nil {
+				response["error"] = err.Error()
+				response["success"] = false
+			} else {
+				response["success"] = true
+				response["message"] = "file written successfully"
+			}
+		}
+
+	case "read_file":
+		if req.Path == "" {
+			response["error"] = "path is required"
+			response["success"] = false
+		} else {
+			content, err := cli.ReadFile(ctx, containerName, req.Path)
+			if err != nil {
+				response["error"] = err.Error()
+				response["success"] = false
+			} else {
+				response["success"] = true
+				response["content"] = string(content)
+			}
+		}
+
+	default:
+		response["error"] = "unknown action"
+		response["success"] = false
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(response)
+}
+
+func getWorkspacePath(conversationID string) string {
+	// sanitize conversationID to prevent directory traversal
+	// uuid usually safe, but good to be sure it doesn't contain .. or /
+	safeID := strings.ReplaceAll(conversationID, "/", "")
+	safeID = strings.ReplaceAll(safeID, "..", "")
+	return fmt.Sprintf("/root/workspaces/%s", safeID)
+}
+
+// HandleWorkspaceFiles handles file uploads to a workspace
+func HandleWorkspaceFiles(w http.ResponseWriter, r *http.Request, cfg *model.Config) {
+	// 1. Authenticate
+	session, _ := authManager.GetSession(r)
+	if session == nil {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	// Extract conversation ID from URL path
+	// URL: /v1/workspaces/{conversationId}/files
+	parts := strings.Split(r.URL.Path, "/")
+	if len(parts) < 5 {
+		http.Error(w, "invalid path", http.StatusBadRequest)
+		return
+	}
+	conversationID := parts[3]
+	if conversationID == "" {
+		http.Error(w, "conversation id required", http.StatusBadRequest)
+		return
+	}
+
+	containerName := fmt.Sprintf("llm-sandbox-%d", session.UserID)
+	cli, err := containers.NewClient("", cfg.Logger)
+	if err != nil {
+		cfg.Logger.Error("failed to create docker client", zap.Error(err))
+		http.Error(w, "backend error", http.StatusInternalServerError)
+		return
+	}
+	defer cli.Close()
+
+	ctx := r.Context()
+	workspacePath := getWorkspacePath(conversationID)
+
+	// Ensure workspace exists
+	if err := cli.EnsureDirectory(ctx, containerName, workspacePath); err != nil {
+		cfg.Logger.Error("failed to ensure workspace directory", zap.Error(err))
+		http.Error(w, "failed to setup workspace", http.StatusInternalServerError)
+		return
+	}
+
+	// Check if this is a file read request (path has more than 5 parts)
+	// /v1/workspaces/cid/files/filename
+	if len(parts) > 5 {
+		filename := strings.Join(parts[5:], "/")
+		if strings.Contains(filename, "..") {
+			http.Error(w, "invalid filename", http.StatusBadRequest)
+			return
+		}
+
+		filePath := filepath.Join(workspacePath, filename)
+		content, err := cli.ReadFile(ctx, containerName, filePath)
+		if err != nil {
+			// Log but don't error 500 if just not found?
+			// checking err string might be fragile.
+			http.Error(w, fmt.Sprintf("failed to read file: %v", err), http.StatusNotFound)
+			return
+		}
+
+		// Detect content type
+		ext := filepath.Ext(filename)
+		contentType := "text/plain"
+		switch ext {
+		case ".html", ".htm":
+			contentType = "text/html"
+		case ".json":
+			contentType = "application/json"
+		case ".js":
+			contentType = "application/javascript"
+		case ".css":
+			contentType = "text/css"
+		case ".png":
+			contentType = "image/png"
+		case ".jpg", ".jpeg":
+			contentType = "image/jpeg"
+		case ".svg":
+			contentType = "image/svg+xml"
+		}
+
+		w.Header().Set("Content-Type", contentType)
+		w.Write(content)
+		return
+	}
+
+	if r.Method == "GET" {
+		// List files
+		files, err := cli.ListFiles(ctx, containerName, workspacePath)
+		if err != nil {
+			cfg.Logger.Error("failed to list files", zap.Error(err))
+			http.Error(w, "failed to list files", http.StatusInternalServerError)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"success": true,
+			"files":   files,
+		})
+		return
+	}
+
+	if r.Method == "POST" {
+		// Upload file
+		// limit to 10MB for now
+		if err := r.ParseMultipartForm(10 << 20); err != nil {
+			http.Error(w, "failed to parse multipart form", http.StatusBadRequest)
+			return
+		}
+
+		file, header, err := r.FormFile("file")
+		if err != nil {
+			http.Error(w, "file is required", http.StatusBadRequest)
+			return
+		}
+		defer file.Close()
+
+		// Read content
+		content, err := io.ReadAll(file)
+		if err != nil {
+			http.Error(w, "failed to read file", http.StatusInternalServerError)
+			return
+		}
+
+		targetPath := fmt.Sprintf("%s/%s", workspacePath, header.Filename)
+
+		// Use existing WriteFile (takes byte slice)
+		// For larger files, we might want to implement stream copying in containers package
+		if err := cli.WriteFile(ctx, containerName, targetPath, content); err != nil {
+			cfg.Logger.Error("failed to write file to container", zap.Error(err))
+			http.Error(w, "failed to save file", http.StatusInternalServerError)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"success": true,
+			"path":    targetPath,
+			"name":    header.Filename,
+			"size":    len(content),
+		})
+		return
+	}
+
+	http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+}
+
+// HandleReadWorkspaceFile reads a file from the workspace
+func HandleReadWorkspaceFile(w http.ResponseWriter, r *http.Request, cfg *model.Config, client *containers.Client) {
+	// Path: /v1/workspaces/{conversationId}/files/{filename}
+	parts := strings.Split(r.URL.Path, "/")
+	// /v1/workspaces/uid/files/filename -> 6 parts: "", v1, workspaces, uid, files, filename
+	if len(parts) < 6 {
+		http.Error(w, "Invalid path", http.StatusBadRequest)
+		return
+	}
+
+	conversationId := parts[3]
+	// filename might contain slashes if we support subdirs in future, but for now simple
+	// Reconstruct filename from parts[5:] to allow slashes e.g. /files/dir/file.txt
+	filename := strings.Join(parts[5:], "/")
+
+	if strings.Contains(filename, "..") {
+		http.Error(w, "Invalid filename", http.StatusBadRequest)
+		return
+	}
+
+	workspacePath := getWorkspacePath(conversationId)
+
+	// We need to resolve user id to construct container name llm-sandbox-{uid}
+	// The middleware should have put user_id in context
+	// But wait, getWorkspacePath relies on context? No, it takes conversationId.
+	// We need container name.
+
+	val := r.Context().Value("user_id")
+	userId, ok := val.(string)
+	if !ok {
+		http.Error(w, "User ID not found in context", http.StatusUnauthorized)
+		return
+	}
+
+	containerName := fmt.Sprintf("llm-sandbox-%s", userId)
+	filePath := filepath.Join(workspacePath, filename)
+
+	content, err := client.ReadFile(r.Context(), containerName, filePath)
+	if err != nil {
+		// Log error?
+		http.Error(w, fmt.Sprintf("Failed to read file: %v", err), http.StatusNotFound)
+		return
+	}
+
+	// Simple content type detection based on extension
+	ext := filepath.Ext(filename)
+	contentType := "text/plain"
+	switch ext {
+	case ".html", ".htm":
+		contentType = "text/html"
+	case ".json":
+		contentType = "application/json"
+	case ".js":
+		contentType = "application/javascript"
+	case ".css":
+		contentType = "text/css"
+	case ".png":
+		contentType = "image/png"
+	case ".jpg", ".jpeg":
+		contentType = "image/jpeg"
+	case ".svg":
+		contentType = "image/svg+xml"
+	}
+
+	w.Header().Set("Content-Type", contentType)
+	w.Write(content)
 }
