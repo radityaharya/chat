@@ -3,6 +3,8 @@ package identity
 import (
 	"encoding/json"
 	"net/http"
+
+	"go.uber.org/zap"
 )
 
 // GetHistory retrieves all conversation histories for the authenticated user
@@ -43,6 +45,16 @@ func (am *AuthManager) SyncHistory(w http.ResponseWriter, r *http.Request) {
 
 	// Process each conversation from the client
 	for _, clientConv := range req.Conversations {
+		// Process images in conversation data before saving
+		if err := am.processConversationImages(&clientConv); err != nil {
+			if globalLogger != nil {
+				globalLogger.Error("Failed to process conversation images",
+					zap.String("conversation_id", clientConv.ConversationID),
+					zap.Error(err))
+			}
+			// Continue with original data if image processing fails
+		}
+
 		// Get server version if it exists
 		serverConv, err := am.db.GetHistoryByID(session.UserID, clientConv.ConversationID)
 		if err != nil {

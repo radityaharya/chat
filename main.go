@@ -89,6 +89,16 @@ This is what you should set as your API key in Cursor.
 	// Initialize proxies based on the loaded configuration
 	proxy.InitializeProxies(cfg.Backends, logger)
 
+	// Initialize attachment store
+	attachmentStore, err := identity.NewLocalFileStore("")
+	if err != nil {
+		logger.Fatal("Failed to initialize attachment store", zap.Error(err))
+	}
+	handler.SetAttachmentStore(attachmentStore)
+	identity.SetGlobalAttachmentStore(attachmentStore)
+	identity.SetGlobalLogger(logger)
+	logger.Info("Attachment store initialized", zap.String("directory", "./data/attachments"))
+
 	// Initialize identity system if database URL is provided
 	var db identity.Database
 	if cfg.DatabaseURL != "" {
@@ -98,7 +108,7 @@ This is what you should set as your API key in Cursor.
 		if err != nil {
 			logger.Fatal("Failed to initialize database", zap.Error(err))
 		}
-		
+
 		authManager := identity.NewAuthManager(db)
 		handler.SetAuthManager(authManager)
 		logger.Info("Identity system initialized successfully")

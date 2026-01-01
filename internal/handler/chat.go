@@ -62,7 +62,7 @@ func HandleChatCompletions(w http.ResponseWriter, r *http.Request, cfg *model.Co
 			}
 
 			// Apply role rewrites if configured for this backend
-			if selectedBackend.RoleRewrites != nil && len(selectedBackend.RoleRewrites) > 0 {
+			if len(selectedBackend.RoleRewrites) > 0 {
 				// Check if there are messages to rewrite
 				if messages, ok := chatReq["messages"].([]interface{}); ok {
 					for i, msg := range messages {
@@ -84,7 +84,7 @@ func HandleChatCompletions(w http.ResponseWriter, r *http.Request, cfg *model.Co
 			}
 
 			// Remove unsupported parameters if configured for this backend
-			if selectedBackend.UnsupportedParams != nil && len(selectedBackend.UnsupportedParams) > 0 {
+			if len(selectedBackend.UnsupportedParams) > 0 {
 				for _, param := range selectedBackend.UnsupportedParams {
 					if _, exists := chatReq[param]; exists {
 						logger.Info("Dropping unsupported parameter",

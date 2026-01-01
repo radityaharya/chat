@@ -27,16 +27,23 @@ const (
 	authAPIKeysPath       = "/v1/auth/api-keys"
 	historyPath           = "/v1/user/me/history"
 	configPath            = "/v1/user/me/config"
+	attachmentsPath       = "/v1/attachments/"
 	contentTypeJSON       = "application/json"
 	streamTruePattern     = `"stream":true`
 	peekBufferSize        = 1024
 )
 
 var authManager *identity.AuthManager
+var attachmentStore identity.AttachmentStore
 
 // SetAuthManager sets the global auth manager instance
 func SetAuthManager(am *identity.AuthManager) {
 	authManager = am
+}
+
+// SetAttachmentStore sets the global attachment store instance
+func SetAttachmentStore(store identity.AttachmentStore) {
+	attachmentStore = store
 }
 
 func HandleRequest(cfg *model.Config, w http.ResponseWriter, r *http.Request) {
@@ -97,14 +104,6 @@ func prepareRequestBody(r *http.Request, isStreaming bool, logger *zap.Logger) s
 	return reqBody
 }
 
-func isPublicEndpoint(path, method string) bool {
-	return (path == validatePath && method == "GET") ||
-		(path == modelsPath && method == "GET") ||
-		(path == authSetupPath && method == "GET") ||
-		(path == authSetupPath && method == "POST") ||
-		(path == authLoginPath && method == "POST")
-}
-
 func handlePublicEndpoints(w http.ResponseWriter, r *http.Request, cfg *model.Config) bool {
 	if r.URL.Path == validatePath && r.Method == "GET" {
 		HandleValidateAPIKey(w, r, cfg)
@@ -137,6 +136,13 @@ func handlePublicEndpoints(w http.ResponseWriter, r *http.Request, cfg *model.Co
 			logResponse(cfg.Logger, w)
 			return true
 		}
+	}
+
+	// Attachment serving endpoint (public)
+	if strings.HasPrefix(r.URL.Path, attachmentsPath) && r.Method == "GET" {
+		HandleAttachment(w, r, cfg)
+		logResponse(cfg.Logger, w)
+		return true
 	}
 
 	return false
@@ -237,6 +243,13 @@ func handleProtectedEndpoints(w http.ResponseWriter, r *http.Request, cfg *model
 			logResponse(cfg.Logger, w)
 			return true
 		}
+	}
+
+	// Attachment upload endpoint (protected)
+	if r.URL.Path == "/v1/attachments/upload" && r.Method == "POST" {
+		HandleAttachmentUpload(w, r, cfg)
+		logResponse(cfg.Logger, w)
+		return true
 	}
 
 	return false

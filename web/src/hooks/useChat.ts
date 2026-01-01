@@ -224,14 +224,18 @@ export function useSendMessage() {
                   if (img.image_url?.url) {
                     const chunk = img.image_url.url;
                     const trimmedChunk = chunk.trimStart();
-                    // If the chunk starts with 'data:', it's likely a full URL or a restart.
-                    // Also check if the chunk contains a data URI definition that might be preceded by other chars
-                    if (
+
+                    // Check if this is an attachment URL
+                    if (trimmedChunk.startsWith('/api/v1/attachments/') ||
+                      trimmedChunk.startsWith('/v1/attachments/') ||
+                      trimmedChunk.startsWith('http')) {
+                      // It's a complete URL, just set it directly
+                      imageCalls[index].image_url.url = trimmedChunk;
+                    } else if (
                       (trimmedChunk.startsWith('data:') || chunk.indexOf('data:image/') !== -1) &&
                       imageCalls[index].image_url.url.length > 0
                     ) {
-                      // If we find a new data header, we assume it's a replacement/refresh
-                      // We take the part starting from data: if it was in the middle
+                      // Base64 data URI - handle chunked streaming
                       const dataIndex = chunk.indexOf('data:image/');
                       if (dataIndex !== -1) {
                         imageCalls[index].image_url.url = chunk.substring(dataIndex);
@@ -239,6 +243,7 @@ export function useSendMessage() {
                         imageCalls[index].image_url.url = trimmedChunk;
                       }
                     } else {
+                      // Accumulate base64 chunks
                       imageCalls[index].image_url.url += chunk;
                     }
                   }
@@ -424,18 +429,70 @@ export function useSendMessage() {
 
     currentMessages.push({ role: 'user', content: apiContent });
 
+    // Upload images to backend and get attachment URLs for display
+    const imageAttachments = await Promise.all(
+      parsedFiles
+        .filter(pf => pf.type.startsWith('image/'))
+        .map(async (pf, index) => {
+          const imageFile = attachments!.filter(f => f.type.startsWith('image/'))[index];
+          const base64 = await fileToBase64(imageFile);
+
+          // Upload to backend
+          try {
+            const response = await fetch(`${API_BASE_URL}/v1/attachments/upload`, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                ...(apiKey ? { 'Authorization': `Bearer ${apiKey}` } : {}),
+              },
+              credentials: 'include',
+              body: JSON.stringify({
+                data: base64,
+                contentType: pf.type,
+              }),
+            });
+
+            if (response.ok) {
+              const result = await response.json();
+              return {
+                url: `/api/v1/attachments/${result.uuid}`,
+                contentType: pf.type,
+                name: pf.filename,
+              };
+            }
+          } catch (error) {
+            console.error('Failed to upload image:', error);
+          }
+
+          // Fallback to blob URL if upload fails
+          return {
+            url: URL.createObjectURL(imageFile),
+            contentType: pf.type,
+            name: pf.filename,
+          };
+        })
+    );
+
+    // Non-image attachments still use parsed content
+    const nonImageAttachments = parsedFiles
+      .filter(pf => !pf.type.startsWith('image/'))
+      .map((pf, index) => {
+        const nonImageFile = attachments!.filter(f => !f.type.startsWith('image/'))[index];
+        return {
+          url: URL.createObjectURL(nonImageFile),
+          contentType: pf.type,
+          name: pf.filename,
+          parsedContent: pf.isParsed ? pf.content : undefined,
+        };
+      });
+
     // UI Updates
     const userMessage: Message = {
       id: `user-${Date.now()}`,
       role: 'user',
       content,
       timestamp: Date.now(),
-      attachments: parsedFiles.map((pf, index) => ({
-        url: URL.createObjectURL(attachments![index]),
-        contentType: pf.type,
-        name: pf.filename,
-        parsedContent: pf.isParsed ? pf.content : undefined, // Store raw parsed content for preview
-      })),
+      attachments: [...imageAttachments, ...nonImageAttachments],
     };
     addMessage(userMessage);
 
