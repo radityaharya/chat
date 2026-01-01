@@ -24,6 +24,15 @@ import {
   PromptInputSubmit,
   PromptInputTextarea,
   PromptInputTools,
+  PromptInputCommand,
+  PromptInputCommandInput,
+  PromptInputCommandList,
+  PromptInputCommandEmpty,
+  PromptInputCommandGroup,
+  PromptInputCommandItem,
+  PromptInputHoverCard,
+  PromptInputHoverCardContent,
+  PromptInputHoverCardTrigger,
 } from '@/components/ai-elements/prompt-input';
 import {
   ModelSelector,
@@ -40,8 +49,13 @@ import {
 import {
   CheckIcon,
   Trash2,
+  Wrench,
 } from 'lucide-react';
+import { Button } from '@/components/ui/button';
 import { useRef, useState, useMemo } from 'react';
+import { useEnabledTools, useToggleTool, useSetEnabledTools } from '@/store';
+import { tools } from '@/tools';
+import { cn } from '@/lib/utils';
 
 // Define Model interface
 export interface Model {
@@ -107,6 +121,9 @@ export function ChatInput({
 }: ChatInputProps) {
   const [modelSelectorOpen, setModelSelectorOpen] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const enabledTools = useEnabledTools();
+  const setEnabledTools = useSetEnabledTools();
+  const toggleTool = useToggleTool();
 
   const selectedModelData = useMemo(() => {
     const model = models.find((m) => m.id === selectedModel);
@@ -214,6 +231,82 @@ export function ChatInput({
               </PromptInputActionMenuContent>
             </PromptInputActionMenu>
 
+            <PromptInputHoverCard>
+              <PromptInputHoverCardTrigger>
+                <PromptInputButton
+                  className={cn(
+                    "h-7 sm:h-8 transition-colors",
+                    enabledTools.length > 0 ? "text-primary hover:bg-primary/10 px-2" : "text-muted-foreground hover:bg-muted"
+                  )}
+                  size={enabledTools.length > 0 ? undefined : "icon-sm"}
+                  variant="ghost"
+                  disabled={disabled}
+                >
+                  <Wrench className="size-4" />
+                  {enabledTools.length > 0 && (
+                    <span className="ml-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[9px] font-bold text-primary-foreground">
+                      {enabledTools.length}
+                    </span>
+                  )}
+                </PromptInputButton>
+              </PromptInputHoverCardTrigger>
+              <PromptInputHoverCardContent className="w-[300px] p-0" align="start">
+                <PromptInputCommand>
+                  <PromptInputCommandInput placeholder="Search tools..." />
+                  <PromptInputCommandList>
+                    <PromptInputCommandEmpty className="p-2 text-sm text-center text-muted-foreground">
+                      No tools found.
+                    </PromptInputCommandEmpty>
+
+                    <PromptInputCommandGroup heading="Available Tools">
+                      {Object.values(tools).map((tool) => {
+                        const ToolIcon = tool.icon || Wrench;
+                        return (
+                          <PromptInputCommandItem
+                            key={tool.name}
+                            onSelect={() => toggleTool(tool.name)}
+                            value={tool.name}
+                            className="flex items-center justify-between"
+                          >
+                            <div className="flex items-center gap-2 min-w-0">
+                              <ToolIcon className="size-4 shrink-0 opacity-50" />
+                              <div className="flex flex-col min-w-0">
+                                <span className="font-medium truncate">{tool.name}</span>
+                                <span className="text-xs text-muted-foreground line-clamp-1">{tool.description}</span>
+                              </div>
+                            </div>
+                            {enabledTools.includes(tool.name) && (
+                              <CheckIcon className="ml-2 size-4 text-primary shrink-0" />
+                            )}
+                          </PromptInputCommandItem>
+                        );
+                      })}
+                    </PromptInputCommandGroup>
+                  </PromptInputCommandList>
+                  <div className="p-1 border-t">
+                    <div className="flex w-full gap-1">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="flex-1 h-8 text-[10px]"
+                        onClick={() => setEnabledTools(Object.keys(tools))}
+                      >
+                        Enable All
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="flex-1 h-8 text-[10px]"
+                        onClick={() => setEnabledTools([])}
+                      >
+                        Disable All
+                      </Button>
+                    </div>
+                  </div>
+                </PromptInputCommand>
+              </PromptInputHoverCardContent>
+            </PromptInputHoverCard>
+
             <ModelSelector
               onOpenChange={setModelSelectorOpen}
               open={modelSelectorOpen}
@@ -269,6 +362,6 @@ export function ChatInput({
           </div>
         </PromptInputFooter>
       </PromptInput>
-    </div>
+    </div >
   );
 }

@@ -5,6 +5,17 @@ export const UI_RESPONSE_GUIDE = `
 
 You can render structured data in beautiful UI components using the <ui-response> tag. This allows you to present information in a more visually appealing and organized way.
 
+## Code Artifacts
+
+When generating code, please title the code block using the format \`language title\`.
+Example:
+\`\`\`tsx MyComponent.tsx
+  // code here
+\`\`\`
+This enables the code to be extracted into the Artifacts Panel for better viewing.
+
+## UI Response Feature
+
 ### Syntax
 \`\`\`
 <ui-response type="TYPE">

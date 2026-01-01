@@ -19,9 +19,11 @@ import {
   useCheckpoints,
   useForkConversation,
   useLastSyncedAt,
+  useArtifactsPanelOpen,
+  useToggleArtifactsPanel,
 } from '@/store';
 import { useModels, useSendMessage } from '@/hooks/useChat';
-import { useConfig, useUpdateConfig } from '@/hooks/useConfig';
+import { useUpdateConfig } from '@/hooks/useConfig';
 import { useCheckAuth } from '@/hooks/useAuth';
 import { useHistory } from '@/hooks/useHistory';
 import { useViewportHeight } from '@/hooks/useViewportHeight';
@@ -41,7 +43,8 @@ import {
   CheckpointIcon,
   CheckpointTrigger,
 } from '@/components/ai-elements/checkpoint';
-import { MessageSquare, Settings, Trash2, LogOut, PanelLeft, RulerIcon, Cloud, CloudOff } from 'lucide-react';
+import { ArtifactsPanel } from '@/components/chat/ArtifactsPanel';
+import { MessageSquare, Settings, LogOut, PanelLeft, RulerIcon, Cloud, CloudOff, CodeIcon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { nanoid } from 'nanoid';
 import {
@@ -52,6 +55,7 @@ import {
   DialogTitle,
   DialogFooter,
 } from '@/components/ui/dialog';
+import { Sheet, SheetContent } from '@/components/ui/sheet';
 import { Textarea } from '@/components/ui/textarea';
 
 export const Route = createFileRoute('/')({
@@ -78,9 +82,11 @@ function ChatPage() {
   const restoreCheckpoint = useRestoreCheckpoint();
   const forkConversation = useForkConversation();
   const lastSyncedAt = useLastSyncedAt();
+  const artifactsPanelOpen = useArtifactsPanelOpen();
+  const toggleArtifactsPanel = useToggleArtifactsPanel();
 
   const { data: models, isLoading: _isLoadingModels } = useModels();
-  const { data: config } = useConfig();
+  // const { data: config } = useConfig();
   const { mutate: updateConfig } = useUpdateConfig();
   const { sendMessage, regenerate, isStreaming, stopStreaming } = useSendMessage();
   const { data: authStatus, isLoading: isCheckingAuth } = useCheckAuth();
@@ -360,7 +366,7 @@ function ChatPage() {
               >
                 <Settings className="size-4" />
               </Button>
-              <Button
+              {/* <Button
                 variant="ghost"
                 size="icon-sm"
                 onClick={clearMessages}
@@ -369,7 +375,17 @@ function ChatPage() {
                 className="text-terminal-muted hover:text-terminal-text"
               >
                 <Trash2 className="size-4" />
+              </Button> */}
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                onClick={toggleArtifactsPanel}
+                title="Toggle Artifacts"
+                className={artifactsPanelOpen ? "text-terminal-green" : "text-terminal-muted hover:text-terminal-text"}
+              >
+                <CodeIcon className="size-4" />
               </Button>
+              <div className="w-px h-4 bg-terminal-border mx-1" />
               <Button
                 variant="ghost"
                 size="icon-sm"
@@ -449,6 +465,20 @@ function ChatPage() {
           </div>
         </footer>
       </div>
+
+      {/* Artifacts Panel - Desktop */}
+      {artifactsPanelOpen && !isMobile && (
+        <div className="hidden lg:block h-full border-l border-terminal-border bg-terminal-bg relative z-10 w-80 xl:w-96 shrink-0 transition-all duration-300">
+          <ArtifactsPanel />
+        </div>
+      )}
+
+      {/* Artifacts Panel - Mobile Sheet */}
+      <Sheet open={artifactsPanelOpen && isMobile} onOpenChange={toggleArtifactsPanel}>
+        <SheetContent side="right" className="w-[85vw] sm:w-[400px] p-0 border-l border-terminal-border bg-terminal-bg text-terminal-text">
+          <ArtifactsPanel />
+        </SheetContent>
+      </Sheet>
 
       <Dialog open={systemPromptOpen} onOpenChange={setSystemPromptOpen}>
         <DialogContent className="sm:max-w-[500px] max-h-[85vh] overflow-y-auto">

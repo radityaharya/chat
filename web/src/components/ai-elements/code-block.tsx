@@ -109,12 +109,12 @@ export const CodeBlock = ({
       >
         <div className="relative">
           <div
-            className="overflow-auto dark:hidden [&>pre]:m-0 [&>pre]:p-4 [&>pre]:text-sm [&_code]:font-mono [&_code]:text-sm"
+            className="overflow-auto dark:hidden [&>pre]:m-0 [&>pre]:p-4 [&>pre]:text-sm [&>pre]:w-fit [&>pre]:min-w-full [&_code]:font-mono [&_code]:text-sm"
             // biome-ignore lint/security/noDangerouslySetInnerHtml: "this is needed."
             dangerouslySetInnerHTML={{ __html: html }}
           />
           <div
-            className="hidden overflow-auto dark:block [&>pre]:m-0 [&>pre]:p-4 [&>pre]:text-sm [&_code]:font-mono [&_code]:text-sm"
+            className="hidden overflow-auto dark:block [&>pre]:m-0 [&>pre]:p-4 [&>pre]:text-sm [&>pre]:w-fit [&>pre]:min-w-full [&_code]:font-mono [&_code]:text-sm"
             // biome-ignore lint/security/noDangerouslySetInnerHtml: "this is needed."
             dangerouslySetInnerHTML={{ __html: darkHtml }}
           />

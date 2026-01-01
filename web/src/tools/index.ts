@@ -13,21 +13,39 @@ import { colorTool } from './implementations/color';
 import { comulineTool } from './implementations/comuline';
 import { exaTool } from './implementations/exa';
 import { type LocalTool } from './types';
+import {
+  Calculator,
+  Clock,
+  Cloud,
+  Fingerprint,
+  Code,
+  FileText,
+  Link,
+  Shuffle,
+  Palette,
+  Terminal,
+  Search,
+  type LucideIcon
+} from 'lucide-react';
 
-export const tools: Record<string, LocalTool> = {
-  [timeTool.name]: timeTool,
-  [calculatorTool.name]: calculatorTool,
-  [weatherTool.name]: weatherTool,
-  [uuidTool.name]: uuidTool,
-  [base64Tool.name]: base64Tool,
-  [jsonTool.name]: jsonTool,
-  [urlTool.name]: urlTool,
-  [randomTool.name]: randomTool,
-  [hashTool.name]: hashTool,
-  [loremTool.name]: loremTool,
-  [colorTool.name]: colorTool,
-  [comulineTool.name]: comulineTool,
-  [exaTool.name]: exaTool,
+export interface ClientSideTool extends LocalTool {
+  icon?: LucideIcon;
+}
+
+export const tools: Record<string, ClientSideTool> = {
+  [timeTool.name]: { ...timeTool, icon: Clock },
+  [calculatorTool.name]: { ...calculatorTool, icon: Calculator },
+  [weatherTool.name]: { ...weatherTool, icon: Cloud },
+  [uuidTool.name]: { ...uuidTool, icon: Fingerprint },
+  [base64Tool.name]: { ...base64Tool, icon: Code },
+  [jsonTool.name]: { ...jsonTool, icon: FileText },
+  [urlTool.name]: { ...urlTool, icon: Link },
+  [randomTool.name]: { ...randomTool, icon: Shuffle },
+  [hashTool.name]: { ...hashTool, icon: Fingerprint },
+  [loremTool.name]: { ...loremTool, icon: FileText },
+  [colorTool.name]: { ...colorTool, icon: Palette },
+  [comulineTool.name]: { ...comulineTool, icon: Terminal },
+  [exaTool.name]: { ...exaTool, icon: Search },
 };
 
 export const getToolDefinitions = () => {

@@ -39,6 +39,18 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { parseUIResponses } from '@/lib/ui-response-parser';
+import { splitContentWithArtifacts, type CodeArtifact } from '@/lib/artifacts';
+// import {
+//   Artifact,
+//   ArtifactHeader,
+//   ArtifactTitle,
+//   ArtifactDescription,
+//   ArtifactActions,
+//   ArtifactAction,
+//   ArtifactContent,
+// } from '@/components/ai-elements/artifact';
+// import { CodeBlock } from '@/components/ai-elements/code-block';
+import { MessageArtifact } from './MessageArtifact';
 
 interface ChatMessageProps {
   message: StoreMessage;
@@ -170,7 +182,7 @@ export function ChatMessage({ message, onRegenerate, onDelete, onCheckpoint, onF
   const contentSegments = splitContentWithUIResponses(parsed.response);
 
   return (
-    <Message from={message.role} className="group/message">
+    <Message id={`message-${message.id}`} from={message.role} className="group/message">
       <MessageContent>
         {hasThinking && (
           <Reasoning isStreaming={isStreamingThought}>
@@ -207,10 +219,30 @@ export function ChatMessage({ message, onRegenerate, onDelete, onCheckpoint, onF
             {contentSegments.length > 0 ? (
               contentSegments.map((segment, index) => {
                 if (segment.type === 'text') {
+                  // Further split text segments into artifacts
+                  const artifactSegments = splitContentWithArtifacts(segment.content);
                   return (
-                    <MessageResponse key={index}>
-                      {segment.content}
-                    </MessageResponse>
+                    <div key={index} className="flex flex-col gap-2">
+                      {artifactSegments.map((part, pIndex) => {
+                        if (part.type === 'text') {
+                          return (
+                            <MessageResponse key={pIndex}>
+                              {part.content as string}
+                            </MessageResponse>
+                          );
+                        } else {
+                          const artifact = part.content as CodeArtifact;
+                          return (
+                            <MessageArtifact
+                              key={artifact.id || pIndex}
+                              artifact={artifact}
+                              messageId={message.id}
+                              index={pIndex}
+                            />
+                          );
+                        }
+                      })}
+                    </div>
                   );
                 } else {
                   return (

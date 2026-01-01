@@ -1,6 +1,6 @@
 import { useState, useRef } from 'react';
 import { useQuery, useMutation } from '@tanstack/react-query';
-import { useApiKey, useAddMessage, useUpdateMessage, type Message, useSetMessages } from '@/store';
+import { useApiKey, useAddMessage, useUpdateMessage, type Message, useSetMessages, useEnabledTools } from '@/store';
 import { getToolDefinitions, tools } from '@/tools';
 import { UI_RESPONSE_GUIDE } from '@/lib/ui-response-guide';
 import { parseFiles } from '@/lib/file-parser';
@@ -88,6 +88,7 @@ export function useSendMessage() {
   const addMessage = useAddMessage();
   const updateMessage = useUpdateMessage();
   const setMessages = useSetMessages();
+  const enabledTools = useEnabledTools();
   const [isStreaming, setIsStreaming] = useState(false);
   const abortControllerRef = useRef<AbortController | null>(null);
 
@@ -154,7 +155,9 @@ export function useSendMessage() {
             model,
             messages: apiMessages,
             stream: true,
-            tools: getToolDefinitions(),
+            tools: getToolDefinitions().filter(t =>
+              enabledTools.includes(t.function.name)
+            ),
           }),
           signal: abortControllerRef.current?.signal,
         });

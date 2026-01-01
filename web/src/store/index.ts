@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import { nanoid } from 'nanoid';
+import { tools } from '@/tools';
 import type { ToolUIPart } from 'ai';
 
 interface Message {
@@ -69,6 +70,16 @@ interface UIState {
 
   selectedModel: string | null;
   setSelectedModel: (model: string) => void;
+
+  // Tools state
+  enabledTools: string[];
+  setEnabledTools: (tools: string[]) => void;
+  toggleTool: (toolName: string) => void;
+
+  // Artifacts panel
+  artifactsPanelOpen: boolean;
+  setArtifactsPanelOpen: (open: boolean) => void;
+  toggleArtifactsPanel: () => void;
 
   // Sync state
   syncStatus: 'idle' | 'syncing' | 'error';
@@ -368,6 +379,23 @@ export const useUIStore = create<UIState>()(
         set({ selectedModel: model });
       },
 
+      // Tools state
+      enabledTools: Object.keys(tools),
+      setEnabledTools: (tools) => set({ enabledTools: tools }),
+      toggleTool: (toolName) => set((state) => {
+        const isEnabled = state.enabledTools.includes(toolName);
+        return {
+          enabledTools: isEnabled
+            ? state.enabledTools.filter(t => t !== toolName)
+            : [...state.enabledTools, toolName]
+        };
+      }),
+
+      // Artifacts panel
+      artifactsPanelOpen: false,
+      setArtifactsPanelOpen: (open) => set({ artifactsPanelOpen: open }),
+      toggleArtifactsPanel: () => set((state) => ({ artifactsPanelOpen: !state.artifactsPanelOpen })),
+
       // Sync state
       syncStatus: 'idle',
       lastSyncedAt: null,
@@ -388,6 +416,8 @@ export const useUIStore = create<UIState>()(
         conversations: state.conversations,
         activeConversationId: state.activeConversationId,
         lastSyncedAt: state.lastSyncedAt,
+        enabledTools: state.enabledTools,
+        artifactsPanelOpen: state.artifactsPanelOpen,
       }),
     }
   )
@@ -438,6 +468,16 @@ export const useSyncError = () => useUIStore((s) => s.syncError);
 export const useSetSyncStatus = () => useUIStore((s) => s.setSyncStatus);
 export const useSetLastSyncedAt = () => useUIStore((s) => s.setLastSyncedAt);
 export const useSetSyncError = () => useUIStore((s) => s.setSyncError);
+
+// Tools hooks
+export const useEnabledTools = () => useUIStore((s) => s.enabledTools);
+export const useSetEnabledTools = () => useUIStore((s) => s.setEnabledTools);
+export const useToggleTool = () => useUIStore((s) => s.toggleTool);
+
+// Artifacts panel hooks
+export const useArtifactsPanelOpen = () => useUIStore((s) => s.artifactsPanelOpen);
+export const useSetArtifactsPanelOpen = () => useUIStore((s) => s.setArtifactsPanelOpen);
+export const useToggleArtifactsPanel = () => useUIStore((s) => s.toggleArtifactsPanel);
 
 // Export Message type
 export type { Message, Conversation, Checkpoint };
