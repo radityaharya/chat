@@ -3,6 +3,7 @@ import { useQuery, useMutation } from '@tanstack/react-query';
 import { useApiKey, useAddMessage, useUpdateMessage, type Message, useSetMessages } from '@/store';
 import { getToolDefinitions, tools } from '@/tools';
 import { UI_RESPONSE_GUIDE } from '@/lib/ui-response-guide';
+import { parseFiles } from '@/lib/file-parser';
 import type { ToolUIPart } from 'ai';
 
 const API_BASE_URL = '/api';
@@ -394,28 +395,30 @@ export function useSendMessage() {
     }
 
     // Process attachments
-    const processedAttachments = attachments ? await Promise.all(
-      attachments.map(async (file) => ({
-        file,
-        url: await fileToBase64(file),
-        isImage: file.type.startsWith('image/')
-      }))
-    ) : [];
+    const { parsedFiles, combinedContent } = attachments && attachments.length > 0
+      ? await parseFiles(attachments)
+      : { parsedFiles: [], combinedContent: '' };
 
-    let apiContent: string | Array<any> = content;
-    const apiImages = processedAttachments
-      .filter(p => p.isImage)
-      .map(p => ({
-        type: 'image_url',
-        image_url: {
-          url: p.url,
-        },
-      }));
+    // Build the user's message content
+    // If there are non-image files, append their parsed content to the user's text
+    const userContentText = content + combinedContent;
 
-    if (apiImages.length > 0) {
+    let apiContent: string | Array<any> = userContentText;
+
+    // Convert image files to base64 for API
+    const imageBase64s = await Promise.all(
+      attachments?.filter(f => f.type.startsWith('image/')).map(fileToBase64) || []
+    );
+
+    const apiImagesWithBase64 = imageBase64s.map(url => ({
+      type: 'image_url',
+      image_url: { url },
+    }));
+
+    if (apiImagesWithBase64.length > 0) {
       apiContent = [
-        { type: 'text', text: content },
-        ...apiImages,
+        { type: 'text', text: userContentText },
+        ...apiImagesWithBase64,
       ];
     }
 
@@ -427,10 +430,11 @@ export function useSendMessage() {
       role: 'user',
       content,
       timestamp: Date.now(),
-      attachments: processedAttachments.map(p => ({
-        url: p.url,
-        contentType: p.file.type,
-        name: p.file.name
+      attachments: parsedFiles.map((pf, index) => ({
+        url: URL.createObjectURL(attachments![index]),
+        contentType: pf.type,
+        name: pf.filename,
+        parsedContent: pf.isParsed ? pf.content : undefined, // Store raw parsed content for preview
       })),
     };
     addMessage(userMessage);

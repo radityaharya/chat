@@ -260,6 +260,7 @@ export function ChatMessage({ message, onRegenerate, onDelete, onCheckpoint, onF
                   url: attachment.url,
                   filename: attachment.name,
                   mediaType: attachment.contentType,
+                  parsedContent: attachment.parsedContent,
                 }}
               />
             ))}

@@ -339,7 +339,12 @@ export function PromptInputAttachment({
             </Button>
           </div>
 
-          <span className="flex-1 truncate">{attachmentLabel}</span>
+          <div className="flex flex-col flex-1 min-w-0">
+            <span className="truncate text-xs font-medium">{attachmentLabel.split('/').pop()?.replace(/\.[^/.]+$/, '') || attachmentLabel}</span>
+            {attachmentLabel.includes('.') && (
+              <span className="text-[10px] text-muted-foreground">.{attachmentLabel.split('.').pop()}</span>
+            )}
+          </div>
         </div>
       </HoverCardTrigger>
       <PromptInputHoverCardContent className="w-auto p-2">

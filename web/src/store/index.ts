@@ -20,6 +20,7 @@ interface Message {
     url: string;
     contentType: string;
     name: string;
+    parsedContent?: string; // The parsed/formatted content for preview
   }[];
 }
 

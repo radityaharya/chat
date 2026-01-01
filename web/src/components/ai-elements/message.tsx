@@ -15,9 +15,11 @@ import { cn } from "@/lib/utils";
 import type { FileUIPart, UIMessage } from "ai";
 import {
   ChevronLeftIcon,
-  ChevronRightIcon,
   PaperclipIcon,
   XIcon,
+  FileJson,
+  FileText,
+  FileCode,
 } from "lucide-react";
 import type { ComponentProps, HTMLAttributes, ReactElement } from "react";
 import { createContext, memo, useContext, useEffect, useState } from "react";
@@ -322,8 +324,15 @@ export const MessageResponse = memo(
 
 MessageResponse.displayName = "MessageResponse";
 
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
+import { ChevronDownIcon, ChevronRightIcon } from "lucide-react";
+
 export type MessageAttachmentProps = HTMLAttributes<HTMLDivElement> & {
-  data: FileUIPart;
+  data: FileUIPart & { parsedContent?: string };
   className?: string;
   onRemove?: () => void;
 };
@@ -334,16 +343,49 @@ export function MessageAttachment({
   onRemove,
   ...props
 }: MessageAttachmentProps) {
+  const [isOpen, setIsOpen] = useState(false);
   const filename = data.filename || "";
   const mediaType =
     data.mediaType?.startsWith("image/") && data.url ? "image" : "file";
   const isImage = mediaType === "image";
   const attachmentLabel = filename || (isImage ? "Image" : "Attachment");
 
+  // Get file extension for icon display
+  const fileExtension = filename.split('.').pop()?.toLowerCase() || '';
+
+  // Helper to get file type label
+  const getFileTypeLabel = () => {
+    if (data.mediaType) {
+      const type = data.mediaType.split('/')[1];
+      return type?.toUpperCase() || 'FILE';
+    }
+    return fileExtension.toUpperCase() || 'FILE';
+  };
+
+  // Extract code from markdown-formatted parsed content
+  const extractCodeFromParsed = () => {
+    if (!data.parsedContent) return null;
+
+    // Match code blocks: ```language\ncode\n```
+    const codeBlockMatch = data.parsedContent.match(/```(\w+)?\n([\s\S]*?)```/);
+    if (codeBlockMatch) {
+      return {
+        language: codeBlockMatch[1] || 'text',
+        code: codeBlockMatch[2].trim(),
+      };
+    }
+
+    return null;
+  };
+
+  const codePreview = extractCodeFromParsed();
+  const hasPreview = !isImage && codePreview && codePreview.code;
+
   return (
     <div
       className={cn(
-        "group relative size-24 overflow-hidden rounded-lg",
+        "group relative overflow-hidden rounded-lg",
+        isImage ? "size-24" : "w-full max-w-2xl",
         className
       )}
       {...props}
@@ -374,33 +416,82 @@ export function MessageAttachment({
           )}
         </>
       ) : (
-        <>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <div className="flex size-full shrink-0 items-center justify-center rounded-lg bg-muted text-muted-foreground">
-                <PaperclipIcon className="size-4" />
+        <Collapsible open={isOpen} onOpenChange={setIsOpen}>
+          <div className="flex flex-col rounded-lg border border-foreground/10 bg-muted/50 overflow-hidden">
+            {/* Header - Always visible */}
+            <CollapsibleTrigger asChild>
+              <div className="flex items-center gap-3 p-3 cursor-pointer transition-colors hover:bg-muted">
+                {/* File Icon */}
+                <div className="flex size-10 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary">
+                  {(() => {
+                    // Select icon based on file type
+                    if (fileExtension === 'json' || data.mediaType?.includes('json')) {
+                      return <FileJson className="size-5" />;
+                    }
+                    if (['js', 'ts', 'tsx', 'jsx', 'py', 'java', 'c', 'cpp', 'sh', 'css', 'html', 'xml'].includes(fileExtension)) {
+                      return <FileCode className="size-5" />;
+                    }
+                    if (['txt', 'md', 'csv', 'log'].includes(fileExtension) || data.mediaType?.startsWith('text/')) {
+                      return <FileText className="size-5" />;
+                    }
+                    return <PaperclipIcon className="size-5" />;
+                  })()}
+                </div>
+
+                {/* File Info */}
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <p className="truncate font-medium text-sm leading-tight">
+                      {attachmentLabel}
+                    </p>
+                    {onRemove && (
+                      <Button
+                        aria-label="Remove attachment"
+                        className="size-5 shrink-0 rounded p-0 opacity-0 transition-opacity hover:bg-accent group-hover:opacity-100 [&>svg]:size-3"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onRemove();
+                        }}
+                        type="button"
+                        variant="ghost"
+                      >
+                        <XIcon />
+                        <span className="sr-only">Remove</span>
+                      </Button>
+                    )}
+                  </div>
+                  <p className="text-muted-foreground text-xs mt-0.5">
+                    {getFileTypeLabel()} File {hasPreview && "• Click to preview"}
+                  </p>
+                </div>
+
+                {/* Expand Icon */}
+                {hasPreview && (
+                  <div className="shrink-0 text-muted-foreground">
+                    {isOpen ? (
+                      <ChevronDownIcon className="size-4" />
+                    ) : (
+                      <ChevronRightIcon className="size-4" />
+                    )}
+                  </div>
+                )}
               </div>
-            </TooltipTrigger>
-            <TooltipContent>
-              <p>{attachmentLabel}</p>
-            </TooltipContent>
-          </Tooltip>
-          {onRemove && (
-            <Button
-              aria-label="Remove attachment"
-              className="size-6 shrink-0 rounded-full p-0 opacity-0 transition-opacity hover:bg-accent group-hover:opacity-100 [&>svg]:size-3"
-              onClick={(e) => {
-                e.stopPropagation();
-                onRemove();
-              }}
-              type="button"
-              variant="ghost"
-            >
-              <XIcon />
-              <span className="sr-only">Remove</span>
-            </Button>
-          )}
-        </>
+            </CollapsibleTrigger>
+
+            {/* Collapsible Content - Code Preview */}
+            {hasPreview && (
+              <CollapsibleContent>
+                <div className="border-t border-border">
+                  <div className="p-3 bg-background/50">
+                    <pre className="text-xs overflow-x-auto">
+                      <code className="font-mono">{codePreview.code}</code>
+                    </pre>
+                  </div>
+                </div>
+              </CollapsibleContent>
+            )}
+          </div>
+        </Collapsible>
       )}
     </div>
   );
@@ -420,7 +511,7 @@ export function MessageAttachments({
   return (
     <div
       className={cn(
-        "ml-auto flex w-fit flex-wrap items-start gap-2",
+        "ml-auto flex w-full flex-col items-start gap-2",
         className
       )}
       {...props}
