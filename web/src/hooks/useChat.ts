@@ -163,7 +163,29 @@ export function useSendMessage() {
         });
 
         if (!response.ok) {
-          throw new Error(`HTTP error! status: ${response.status}`);
+          let errorMessage = `HTTP error! status: ${response.status}`;
+          try {
+            const text = await response.text();
+            if (text) {
+              try {
+                const json = JSON.parse(text);
+                if (json?.error?.message) {
+                  errorMessage = json.error.message;
+                } else if (json?.message) {
+                  errorMessage = json.message;
+                } else if (typeof json?.error === 'string') {
+                  errorMessage = json.error;
+                } else {
+                  errorMessage = JSON.stringify(json);
+                }
+              } catch {
+                errorMessage = text;
+              }
+            }
+          } catch {
+            // If anything fails, use the default HTTP status message
+          }
+          throw new Error(errorMessage);
         }
 
         const reader = response.body?.getReader();
@@ -363,7 +385,8 @@ export function useSendMessage() {
         updateMessage(assistantMessageId, 'Error: Stream aborted', false);
       } else {
         console.error('Error sending message:', error);
-        updateMessage(assistantMessageId, 'Error: Failed to get response', false);
+        const errorMessage = error instanceof Error ? error.message : 'Failed to get response';
+        updateMessage(assistantMessageId, `Error: ${errorMessage}`, false);
       }
       throw error;
     } finally {
