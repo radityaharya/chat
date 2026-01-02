@@ -6,7 +6,7 @@ import { CodeBlock } from '@/components/ai-elements/code-block';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { CalendarIcon, CodeIcon, FileIcon, FolderIcon, UploadIcon, Loader2Icon } from 'lucide-react';
 import { format } from 'date-fns';
-import { useMemo, useState, useRef } from 'react';
+import { useMemo, useState, useRef, useEffect } from 'react';
 import { Streamdown } from 'streamdown';
 import { Input } from '@/components/ui/input';
 import { SearchIcon } from 'lucide-react';
@@ -40,31 +40,47 @@ export function ArtifactsPanel() {
   const messages = useMessages();
   const { files, isLoading: isLoadingFiles, uploadFile, isUploading } = useWorkspaceFiles();
   const [viewingFile, setViewingFile] = useState<FileEntry | null>(null);
+  const [searchQuery, setSearchQuery] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
   const activeConversationId = useActiveConversationId();
 
-  // CRITICAL FIX: Use ref to cache artifacts and only update when streaming stops
+  // CRITICAL FIX: Use ref to cache artifacts and track conversation ID
   const lastArtifactsRef = useRef<{ message: any, artifacts: CodeArtifact[] }[]>([]);
   const wasStreamingRef = useRef(false);
+  const lastConversationIdRef = useRef<string | null>(null);
+
+  // Reset UI state when conversation changes
+  useEffect(() => {
+    setViewingFile(null);
+    setSearchQuery('');
+  }, [activeConversationId]);
 
   // Check if ANY message is currently streaming
   const isStreaming = messages.some(m => m.streaming);
 
   // Extract all artifacts from messages  
-  // ONLY process when streaming status changes from true to false
+  // ONLY process when streaming status changes from true to false OR conversation changes
   const artifactsByMessage = useMemo(() => {
-    console.log('[PERF] ArtifactsPanel useMemo triggered', { isStreaming, messagesCount: messages.length });
+    // Reset cache if conversation changed
+    if (lastConversationIdRef.current !== activeConversationId) {
+      lastConversationIdRef.current = activeConversationId;
+      lastArtifactsRef.current = [];
+      wasStreamingRef.current = false;
+
+      // If no conversation, return empty
+      if (!activeConversationId) {
+        return [];
+      }
+    }
 
     // If streaming, return cached result (don't reprocess)
     if (isStreaming) {
-      console.log('[PERF] ArtifactsPanel: Streaming active, returning cache');
       wasStreamingRef.current = true;
       return lastArtifactsRef.current;
     }
 
     // If we just stopped streaming OR first load, reprocess
     if (wasStreamingRef.current || lastArtifactsRef.current.length === 0) {
-      console.log('[PERF] ArtifactsPanel: Streaming stopped, extracting artifacts');
       wasStreamingRef.current = false;
 
       const newArtifacts = messages
@@ -82,9 +98,7 @@ export function ArtifactsPanel() {
 
     // Return cached if nothing changed
     return lastArtifactsRef.current;
-  }, [isStreaming, messages]);
-
-  const [searchQuery, setSearchQuery] = useState('');
+  }, [isStreaming, messages, activeConversationId]);
 
   const filteredArtifacts = useMemo(() => {
     if (!searchQuery.trim()) return artifactsByMessage;

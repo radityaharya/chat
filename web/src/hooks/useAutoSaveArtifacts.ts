@@ -20,7 +20,6 @@ export function useAutoSaveArtifacts() {
   // Initialize with existing messages on mount so we don't re-upload old stuff
   // CRITICAL: This should only run ONCE on mount, not on every message update!
   useEffect(() => {
-    console.log('[PERF] useAutoSaveArtifacts: Init effect running');
     if (!initialized.current) {
       // Get current messages at mount time
       messages.forEach(msg => {
@@ -39,7 +38,6 @@ export function useAutoSaveArtifacts() {
 
   // Process artifacts only when streaming completes
   useEffect(() => {
-    console.log('[PERF] useAutoSaveArtifacts: Process effect triggered', { isStreaming, hasActiveConv: !!activeConversationId });
     // Only process when streaming has stopped
     if (isStreaming || !activeConversationId) return;
 
@@ -62,7 +60,6 @@ export function useAutoSaveArtifacts() {
           try {
             const blob = new Blob([artifact.code], { type: 'text/plain' });
             const file = new File([blob], artifact.title);
-            console.log(`[AutoSave] Uploading artifact: ${artifact.title}`);
             await workspaceApi.waitForReady();
             await workspaceApi.uploadFile(activeConversationId, file);
             // Could add toast here

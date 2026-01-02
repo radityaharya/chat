@@ -1,26 +1,8 @@
 import { useEffect, useState, Fragment } from 'react';
 import { useNavigate } from '@tanstack/react-router';
 import {
-  useApiKey,
-  useSetApiKey,
-  useMessages,
-  useClearMessages,
-  useDeleteMessage,
-  useSelectedModel,
-  useSetSelectedModel,
-  useSystemPrompt,
-  useConversations,
-  useActiveConversationId,
-  // useCreateConversation, // Removed as route handles creation
-  useSetActiveConversation,
-  useSetSystemPrompt,
-  useCreateCheckpoint,
-  useRestoreCheckpoint,
-  useCheckpoints,
-  useForkConversation,
-  useLastSyncedAt,
-  useArtifactsPanelOpen,
-  useToggleArtifactsPanel,
+  useChatInterfaceState,
+  useChatInterfaceActions,
 } from '@/store';
 import { useModels, useSendMessage } from '@/hooks/useChat';
 import { useUpdateConfig } from '@/hooks/useConfig';
@@ -65,26 +47,33 @@ export function ChatInterface() {
   useAutoSaveArtifacts(); // Auto-save artifacts
   useAutoCd(); // Auto-cd to workspace
   const navigate = useNavigate();
-  const apiKey = useApiKey();
-  const setApiKey = useSetApiKey();
-  const messages = useMessages();
-  const clearMessages = useClearMessages();
-  const deleteMessage = useDeleteMessage();
-  const selectedModel = useSelectedModel();
-  const setSelectedModel = useSetSelectedModel();
 
-  const conversations = useConversations();
-  const activeId = useActiveConversationId();
-  // const createConversation = useCreateConversation(); // Handled by route
-  const setActiveConversation = useSetActiveConversation();
-  const setSystemPrompt = useSetSystemPrompt();
-  const checkpoints = useCheckpoints();
-  const createCheckpoint = useCreateCheckpoint();
-  const restoreCheckpoint = useRestoreCheckpoint();
-  const forkConversation = useForkConversation();
-  const lastSyncedAt = useLastSyncedAt();
-  const artifactsPanelOpen = useArtifactsPanelOpen();
-  const toggleArtifactsPanel = useToggleArtifactsPanel();
+  // Combined state hook - reduces from 15+ subscriptions to 1
+  const {
+    apiKey,
+    systemPrompt,
+    conversations,
+    activeConversationId: activeId,
+    messages,
+    checkpoints,
+    selectedModel,
+    lastSyncedAt,
+    artifactsPanelOpen,
+  } = useChatInterfaceState();
+
+  // Combined actions hook - stable references
+  const {
+    setApiKey,
+    setSystemPrompt,
+    setActiveConversation,
+    clearMessages,
+    deleteMessage,
+    setSelectedModel,
+    createCheckpoint,
+    restoreCheckpoint,
+    forkConversation,
+    toggleArtifactsPanel,
+  } = useChatInterfaceActions();
 
   const { data: models, isLoading: _isLoadingModels } = useModels();
   // const { data: config } = useConfig();
@@ -156,7 +145,6 @@ export function ChatInterface() {
 
   // Debounced sync after streaming completes (3 seconds after streaming stops)
   useEffect(() => {
-    console.log('[PERF] ChatInterface: Sync effect triggered', { isStreaming, msgCount: messages.length });
     if (!authStatus?.authenticated || messages.length === 0 || isStreaming) return;
 
     const timeoutId = setTimeout(() => {
@@ -175,13 +163,8 @@ export function ChatInterface() {
     }
   }, [models, selectedModel, setSelectedModel]);
 
-  // Ensure active conversation logic was removed here as the Route should handle it.
-
-  const systemPrompt = useSystemPrompt();
-
   // Process queue when not streaming
   useEffect(() => {
-    console.log('[PERF] ChatInterface: Queue effect triggered', { isStreaming, queueLen: queue.length });
     if (!isStreaming && queue.length > 0 && selectedModel) {
       const nextItem = queue[0];
       setQueue((prev) => prev.slice(1));

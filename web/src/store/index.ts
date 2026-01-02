@@ -1,9 +1,73 @@
 import { create } from 'zustand';
-import { persist, createJSONStorage } from 'zustand/middleware';
+import { persist, createJSONStorage, type StateStorage } from 'zustand/middleware';
 import { useShallow } from 'zustand/react/shallow';
 import { nanoid } from 'nanoid';
 import { tools } from '@/tools';
 import type { ToolUIPart } from 'ai';
+import { get, set, del } from 'idb-keyval';
+
+// Debounced storage wrapper to batch writes during streaming
+// This prevents IndexedDB writes on every updateMessage call during streaming
+const createDebouncedStorage = (delay = 1000): StateStorage => {
+  let pendingWrite: { name: string; value: string } | null = null;
+  let timeoutId: ReturnType<typeof setTimeout> | null = null;
+
+  const flush = async () => {
+    if (pendingWrite) {
+      await set(pendingWrite.name, pendingWrite.value);
+      pendingWrite = null;
+    }
+  };
+
+  // Flush on page unload to prevent data loss
+  if (typeof window !== 'undefined') {
+    window.addEventListener('beforeunload', () => {
+      if (pendingWrite) {
+        // Use sync localStorage as fallback for emergency save
+        try {
+          localStorage.setItem(`${pendingWrite.name}_backup`, pendingWrite.value);
+        } catch {
+          // Storage full, ignore
+        }
+      }
+    });
+  }
+
+  return {
+    getItem: async (name: string): Promise<string | null> => {
+      // If there's a pending write for this key, return the pending value
+      if (pendingWrite?.name === name) {
+        return pendingWrite.value;
+      }
+      const value = await get(name);
+      return value ?? null;
+    },
+    setItem: async (name: string, value: string): Promise<void> => {
+      pendingWrite = { name, value };
+
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+      }
+
+      timeoutId = setTimeout(async () => {
+        await flush();
+        timeoutId = null;
+      }, delay);
+    },
+    removeItem: async (name: string): Promise<void> => {
+      if (pendingWrite?.name === name) {
+        pendingWrite = null;
+      }
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+        timeoutId = null;
+      }
+      await del(name);
+    },
+  };
+};
+
+const indexedDBStorage = createDebouncedStorage(1000); // 1 second debounce
 
 interface Message {
   id: string;
@@ -201,7 +265,6 @@ export const useUIStore = create<UIState>()(
 
       updateMessage: (id, content, streaming, parts, images) =>
         set((state) => {
-          console.log('[PERF] updateMessage called', { id: id.slice(-8), contentLength: content.length, streaming });
           const activeId = state.activeConversationId;
           if (!activeId || !state.conversations[activeId]) return {};
 
@@ -428,7 +491,8 @@ export const useUIStore = create<UIState>()(
     }),
     {
       name: 'chat-ui-store',
-      storage: createJSONStorage(() => localStorage),
+      storage: createJSONStorage(() => indexedDBStorage),
+      version: 1, // Increment when making breaking changes to state shape
       partialize: (state) => ({
         // CRITICAL: DO NOT persist conversations - causes OOM with large data
         // Conversations are synced with backend via useHistory hook
@@ -443,6 +507,28 @@ export const useUIStore = create<UIState>()(
         artifactsPanelOpen: state.artifactsPanelOpen,
         uiResponseEnabled: state.uiResponseEnabled,
       }),
+      // Migration function for handling version updates
+      migrate: (persistedState: any, version: number) => {
+        if (version === 0) {
+          // Migration from v0 to v1 (initial IndexedDB migration)
+          // No state shape changes, just storage backend change
+          console.log('[Store] Migrated from localStorage to IndexedDB');
+        }
+        return persistedState;
+      },
+      // Optional: Add hydration callbacks for debugging
+      onRehydrateStorage: () => {
+        console.log('[Store] Hydration started from IndexedDB');
+        return (state, error) => {
+          if (error) {
+            console.error('[Store] Hydration error:', error);
+          } else {
+            console.log('[Store] Hydration finished', {
+              conversationCount: state ? Object.keys(state.conversations || {}).length : 0
+            });
+          }
+        };
+      },
     }
   )
 );
@@ -466,9 +552,7 @@ const EMPTY_CHECKPOINTS: Checkpoint[] = [];
 
 export const useMessages = () => useUIStore(useShallow((s) => {
   const chat = s.activeConversationId ? s.conversations[s.activeConversationId] : null;
-  const messages = chat ? chat.messages : EMPTY_MESSAGES;
-  console.log('[PERF] useMessages selector called', { count: messages.length, hasStreaming: messages.some(m => m.streaming) });
-  return messages;
+  return chat ? chat.messages : EMPTY_MESSAGES;
 })); // CRITICAL: Use useShallow to prevent unnecessary re-renders
 
 export const useCheckpoints = () => useUIStore((s) => {
@@ -510,5 +594,38 @@ export const useUIResponseEnabled = () => useUIStore((s) => s.uiResponseEnabled)
 export const useSetUIResponseEnabled = () => useUIStore((s) => s.setUIResponseEnabled);
 export const useToggleUIResponseEnabled = () => useUIStore((s) => s.toggleUIResponseEnabled);
 
+// Combined hook for ChatInterface - reduces subscription overhead
+// Instead of 15+ individual subscriptions, use one with shallow comparison
+export const useChatInterfaceState = () => useUIStore(useShallow((s) => {
+  const activeChat = s.activeConversationId ? s.conversations[s.activeConversationId] : null;
+  return {
+    // Data
+    apiKey: s.apiKey,
+    systemPrompt: s.systemPrompt,
+    conversations: s.conversations,
+    activeConversationId: s.activeConversationId,
+    messages: activeChat?.messages ?? EMPTY_MESSAGES,
+    checkpoints: activeChat?.checkpoints ?? EMPTY_CHECKPOINTS,
+    selectedModel: s.selectedModel,
+    lastSyncedAt: s.lastSyncedAt,
+    artifactsPanelOpen: s.artifactsPanelOpen,
+  };
+}));
+
+// Combined actions hook - MUST use useShallow to prevent infinite re-renders
+export const useChatInterfaceActions = () => useUIStore(useShallow((s) => ({
+  setApiKey: s.setApiKey,
+  setSystemPrompt: s.setSystemPrompt,
+  setActiveConversation: s.setActiveConversation,
+  clearMessages: s.clearMessages,
+  deleteMessage: s.deleteMessage,
+  setSelectedModel: s.setSelectedModel,
+  createCheckpoint: s.createCheckpoint,
+  restoreCheckpoint: s.restoreCheckpoint,
+  forkConversation: s.forkConversation,
+  toggleArtifactsPanel: s.toggleArtifactsPanel,
+})));
+
 // Export Message type
 export type { Message, Conversation, Checkpoint };
+

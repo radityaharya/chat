@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useUIStore, useDeleteConversation } from '../store';
+import { useShallow } from 'zustand/react/shallow';
 import type { Conversation } from '../store';
 
 interface ConversationHistory {
@@ -18,21 +19,29 @@ interface SyncResponse {
   conflicts?: string[];
 }
 
-interface SyncStatus {
-  syncing: boolean;
-  lastSyncedAt: number | null;
-  error: string | null;
-}
-
 export function useHistory() {
-  const conversations = useUIStore((s) => s.conversations);
+  // Combined selector - reduces from 6 subscriptions to 1
+  const { conversations, syncStatus, lastSyncedAt, syncError } = useUIStore(useShallow((s) => ({
+    conversations: s.conversations,
+    syncStatus: s.syncStatus,
+    lastSyncedAt: s.lastSyncedAt,
+    syncError: s.syncError,
+  })));
+
   const deleteConversation = useDeleteConversation();
-  const setSyncStatus = useUIStore((s) => s.setSyncStatus);
-  const setLastSyncedAt = useUIStore((s) => s.setLastSyncedAt);
-  const setSyncError = useUIStore((s) => s.setSyncError);
-  const syncStatus = useUIStore((s) => s.syncStatus);
-  const lastSyncedAt = useUIStore((s) => s.lastSyncedAt);
-  const syncError = useUIStore((s) => s.syncError);
+
+  // Get actions directly from store to avoid subscription overhead
+  const setSyncStatus = useCallback((status: 'idle' | 'syncing' | 'error') => {
+    useUIStore.getState().setSyncStatus(status);
+  }, []);
+
+  const setLastSyncedAt = useCallback((timestamp: number | null) => {
+    useUIStore.getState().setLastSyncedAt(timestamp);
+  }, []);
+
+  const setSyncError = useCallback((error: string | null) => {
+    useUIStore.getState().setSyncError(error);
+  }, []);
 
   const setConversations = useCallback((newConversations: Record<string, Conversation>) => {
     useUIStore.setState({ conversations: newConversations });

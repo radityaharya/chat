@@ -1,6 +1,7 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useCallback } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { useApiKey, useAddMessage, useUpdateMessage, type Message, useSetMessages, useEnabledTools, useActiveConversationId, useUIResponseEnabled } from '@/store';
+import { useUIStore, type Message } from '@/store';
+import { useShallow } from 'zustand/react/shallow';
 import { getToolDefinitions, tools } from '@/tools';
 import { UI_RESPONSE_GUIDE } from '@/lib/ui-response-guide';
 import { parseFiles } from '@/lib/file-parser';
@@ -49,7 +50,7 @@ export function useValidateAPIKey() {
 
 // Fetch available models
 export function useModels() {
-  const apiKey = useApiKey();
+  const apiKey = useUIStore((s) => s.apiKey);
 
   return useQuery({
     queryKey: ['models'],
@@ -85,13 +86,33 @@ const fileToBase64 = (file: File): Promise<string> => {
 
 // Send message with SSE streaming
 export function useSendMessage() {
-  const apiKey = useApiKey();
-  const addMessage = useAddMessage();
-  const updateMessage = useUpdateMessage();
-  const setMessages = useSetMessages();
-  const enabledTools = useEnabledTools();
-  const activeConversationId = useActiveConversationId();
-  const uiResponseEnabled = useUIResponseEnabled();
+  // Combined selector - reduces from 6 subscriptions to 1
+  const { apiKey, enabledTools, activeConversationId, uiResponseEnabled } = useUIStore(useShallow((s) => ({
+    apiKey: s.apiKey,
+    enabledTools: s.enabledTools,
+    activeConversationId: s.activeConversationId,
+    uiResponseEnabled: s.uiResponseEnabled,
+  })));
+
+  // Use direct store access for actions to avoid subscription overhead
+  const addMessage = useCallback((msg: Message) => {
+    useUIStore.getState().addMessage(msg);
+  }, []);
+
+  const updateMessage = useCallback((
+    id: string,
+    content: string,
+    streaming?: boolean,
+    parts?: any[],
+    images?: any[]
+  ) => {
+    useUIStore.getState().updateMessage(id, content, streaming, parts, images);
+  }, []);
+
+  const setMessages = useCallback((msgs: Message[]) => {
+    useUIStore.getState().setMessages(msgs);
+  }, []);
+
   const queryClient = useQueryClient();
   const [isStreaming, setIsStreaming] = useState(false);
   const abortControllerRef = useRef<AbortController | null>(null);

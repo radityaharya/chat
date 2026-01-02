@@ -30,10 +30,12 @@ import {
   PromptInputCommandEmpty,
   PromptInputCommandGroup,
   PromptInputCommandItem,
-  PromptInputHoverCard,
-  PromptInputHoverCardContent,
-  PromptInputHoverCardTrigger,
 } from '@/components/ai-elements/prompt-input';
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from '@/components/ui/popover';
 import {
   ModelSelector,
   ModelSelectorContent,
@@ -53,7 +55,8 @@ import {
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useRef, useState, useMemo } from 'react';
-import { useEnabledTools, useToggleTool, useSetEnabledTools } from '@/store';
+import { useUIStore } from '@/store';
+import { useShallow } from 'zustand/react/shallow';
 import { tools } from '@/tools';
 import { cn } from '@/lib/utils';
 
@@ -121,9 +124,13 @@ export function ChatInput({
 }: ChatInputProps) {
   const [modelSelectorOpen, setModelSelectorOpen] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const enabledTools = useEnabledTools();
-  const setEnabledTools = useSetEnabledTools();
-  const toggleTool = useToggleTool();
+
+  // Combined selector for tools - reduces from 3 subscriptions to 1
+  const { enabledTools, setEnabledTools, toggleTool } = useUIStore(useShallow((s) => ({
+    enabledTools: s.enabledTools,
+    setEnabledTools: s.setEnabledTools,
+    toggleTool: s.toggleTool,
+  })));
 
   const selectedModelData = useMemo(() => {
     const model = models.find((m) => m.id === selectedModel);
@@ -231,8 +238,8 @@ export function ChatInput({
               </PromptInputActionMenuContent>
             </PromptInputActionMenu>
 
-            <PromptInputHoverCard>
-              <PromptInputHoverCardTrigger>
+            <Popover>
+              <PopoverTrigger asChild>
                 <PromptInputButton
                   className={cn(
                     "h-7 sm:h-8 transition-colors",
@@ -249,8 +256,8 @@ export function ChatInput({
                     </span>
                   )}
                 </PromptInputButton>
-              </PromptInputHoverCardTrigger>
-              <PromptInputHoverCardContent className="w-[300px] p-0" align="start">
+              </PopoverTrigger>
+              <PopoverContent className="w-[300px] p-0" align="start">
                 <PromptInputCommand>
                   <PromptInputCommandInput placeholder="Search tools..." />
                   <PromptInputCommandList>
@@ -304,8 +311,8 @@ export function ChatInput({
                     </div>
                   </div>
                 </PromptInputCommand>
-              </PromptInputHoverCardContent>
-            </PromptInputHoverCard>
+              </PopoverContent>
+            </Popover>
 
             <ModelSelector
               onOpenChange={setModelSelectorOpen}

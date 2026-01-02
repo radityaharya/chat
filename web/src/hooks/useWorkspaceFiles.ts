@@ -1,9 +1,10 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { workspaceApi } from '../api/workspace';
-import { useActiveConversationId } from '../store';
+import { useUIStore } from '../store';
 
 export function useWorkspaceFiles() {
-  const activeConversationId = useActiveConversationId();
+  // Direct store access - avoids subscription for just reading a simple value
+  const activeConversationId = useUIStore((s) => s.activeConversationId);
   const queryClient = useQueryClient();
 
   const queryKey = ['workspace-files', activeConversationId];
@@ -15,7 +16,8 @@ export function useWorkspaceFiles() {
       return workspaceApi.listFiles(activeConversationId);
     },
     enabled: !!activeConversationId,
-    refetchInterval: 5000, // Poll every 5 seconds to keep in sync
+    staleTime: 3000, // Consider data fresh for 3 seconds to avoid redundant fetches
+    refetchInterval: 10000, // Poll every 10 seconds (was 5, less aggressive)
   });
 
   const uploadMutation = useMutation({
@@ -36,3 +38,4 @@ export function useWorkspaceFiles() {
     isUploading: uploadMutation.isPending,
   };
 }
+

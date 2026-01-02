@@ -1,11 +1,7 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useNavigate } from '@tanstack/react-router';
-import {
-  useConversations,
-  useActiveConversationId,
-  useCreateConversation,
-  useSetActiveConversation
-} from '@/store';
+import { useUIStore } from '@/store';
+import { useShallow } from 'zustand/react/shallow';
 import { useHistory } from '@/hooks/useHistory';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -30,18 +26,27 @@ interface ChatSidebarProps {
 
 export function ChatSidebar({ className, isOpen = true, onClose, isMobile = false }: ChatSidebarProps) {
   const navigate = useNavigate();
-  const conversations = useConversations();
-  const activeId = useActiveConversationId();
-  const setActiveConversation = useSetActiveConversation();
-  const createConversation = useCreateConversation();
+
+  // Combined selector - reduces from 4 subscriptions to 1
+  const { conversations, activeId, createConversation, setActiveConversation } = useUIStore(useShallow((s) => ({
+    conversations: s.conversations,
+    activeId: s.activeConversationId,
+    createConversation: s.createConversation,
+    setActiveConversation: s.setActiveConversation,
+  })));
+
   const { deleteConversationWithSync } = useHistory();
 
   const [search, setSearch] = useState('');
   const [deleteId, setDeleteId] = useState<string | null>(null);
 
-  const filteredChats = Object.values(conversations)
-    .filter((c) => c.title.toLowerCase().includes(search.toLowerCase()))
-    .sort((a, b) => b.updatedAt - a.updatedAt);
+  // Memoize filtered and sorted chats to avoid re-computing on every render
+  const filteredChats = useMemo(() =>
+    Object.values(conversations)
+      .filter((c) => c.title.toLowerCase().includes(search.toLowerCase()))
+      .sort((a, b) => b.updatedAt - a.updatedAt),
+    [conversations, search]
+  );
 
   const handleCreateChat = () => {
     const newId = createConversation();

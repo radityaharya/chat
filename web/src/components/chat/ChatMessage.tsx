@@ -1,5 +1,5 @@
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useCallback } from 'react';
 import {
   Message,
   MessageAttachment,
@@ -28,7 +28,7 @@ import {
   UIResponseContent,
 } from '@/components/ai-elements/ui-response';
 import type { Message as StoreMessage } from '@/store';
-import { useUIResponseEnabled } from '@/store';
+import { useUIStore } from '@/store';
 import {
   Loader2Icon,
   Copy,
@@ -41,16 +41,6 @@ import {
 import { cn } from '@/lib/utils';
 import { parseUIResponses } from '@/lib/ui-response-parser';
 import { splitContentWithArtifacts, type CodeArtifact } from '@/lib/artifacts';
-// import {
-//   Artifact,
-//   ArtifactHeader,
-//   ArtifactTitle,
-//   ArtifactDescription,
-//   ArtifactActions,
-//   ArtifactAction,
-//   ArtifactContent,
-// } from '@/components/ai-elements/artifact';
-// import { CodeBlock } from '@/components/ai-elements/code-block';
 import { MessageArtifact } from './MessageArtifact';
 
 interface ChatMessageProps {
@@ -105,19 +95,66 @@ function parseThinkingTags(content: string): ParsedContent {
   };
 }
 
+// Helper to split content into segments with ui-response tags inline
+// Moved OUTSIDE component to avoid re-creation on every render
+function splitContentWithUIResponses(content: string) {
+  const segments: Array<{ type: 'text' | 'ui-response'; content: string; uiType?: string; parsed?: any }> = [];
+  const uiResponseRegex = /<ui-response(?:\s+type=["']([^"']+)["'])?\s*>([\s\S]*?)<\/ui-response>/g;
+
+  let lastIndex = 0;
+  let match;
+
+  while ((match = uiResponseRegex.exec(content)) !== null) {
+    // Add text before this ui-response
+    if (match.index > lastIndex) {
+      const textContent = content.substring(lastIndex, match.index);
+      if (textContent.trim()) {
+        segments.push({ type: 'text', content: textContent });
+      }
+    }
+
+    // Add the ui-response
+    const uiType = match[1] || 'data';
+    const uiContent = match[2];
+    let parsed: any = uiContent.trim();
+    try {
+      parsed = JSON.parse(uiContent.trim());
+    } catch {
+      parsed = uiContent.trim();
+    }
+
+    segments.push({
+      type: 'ui-response',
+      content: uiContent,
+      uiType,
+      parsed,
+    });
+
+    lastIndex = match.index + match[0].length;
+  }
+
+  // Add remaining text after last ui-response
+  if (lastIndex < content.length) {
+    const textContent = content.substring(lastIndex);
+    if (textContent.trim()) {
+      segments.push({ type: 'text', content: textContent });
+    }
+  }
+
+  return segments;
+}
+
 
 export function ChatMessage({ message, onRegenerate, onDelete, onCheckpoint, onFork }: ChatMessageProps) {
-  console.log('[PERF] ChatMessage render', { id: message.id.slice(-8), streaming: message.streaming, contentLength: message.content.length });
-
-  const uiResponseEnabled = useUIResponseEnabled();
+  // Direct store access - slightly more efficient than hook wrapper
+  const uiResponseEnabled = useUIStore((s) => s.uiResponseEnabled);
 
   const [copied, setCopied] = useState(false);
 
   // OPTIMIZATION: Memoize expensive parsing operations
   const parsed = useMemo(() => {
-    console.log('[PERF] parseThinkingTags running', { id: message.id.slice(-8) });
     return parseThinkingTags(message.content);
-  }, [message.content, message.id]);
+  }, [message.content]);
 
   const hasThinking = parsed.thinking !== null;
   const hasTools = message.parts && message.parts.length > 0;
@@ -129,7 +166,8 @@ export function ChatMessage({ message, onRegenerate, onDelete, onCheckpoint, onF
   // Show generic loading if streaming but no content yet (and not thinking and not using tools)
   const showLoading = message.streaming && !parsed.response && !hasThinking && !hasTools;
 
-  const handleCopy = () => {
+  // Memoize copy handler to avoid recreation on each render
+  const handleCopy = useCallback(() => {
     // Copy content without ui-response and think tags
     const { cleanedContent } = parseUIResponses(message.content);
     const contentWithoutThink = cleanedContent.replace(/<think>[\s\S]*?<\/think>/g, '').trim();
@@ -139,58 +177,10 @@ export function ChatMessage({ message, onRegenerate, onDelete, onCheckpoint, onF
     navigator.clipboard.writeText(contentToCopy);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
-  };
-
-  // Helper to split content into segments with ui-response tags inline
-  const splitContentWithUIResponses = (content: string) => {
-    const segments: Array<{ type: 'text' | 'ui-response'; content: string; uiType?: string; parsed?: any }> = [];
-    const uiResponseRegex = /<ui-response(?:\s+type=["']([^"']+)["'])?\s*>([\s\S]*?)<\/ui-response>/g;
-
-    let lastIndex = 0;
-    let match;
-
-    while ((match = uiResponseRegex.exec(content)) !== null) {
-      // Add text before this ui-response
-      if (match.index > lastIndex) {
-        const textContent = content.substring(lastIndex, match.index);
-        if (textContent.trim()) {
-          segments.push({ type: 'text', content: textContent });
-        }
-      }
-
-      // Add the ui-response
-      const uiType = match[1] || 'data';
-      const uiContent = match[2];
-      let parsed: any = uiContent.trim();
-      try {
-        parsed = JSON.parse(uiContent.trim());
-      } catch {
-        parsed = uiContent.trim();
-      }
-
-      segments.push({
-        type: 'ui-response',
-        content: uiContent,
-        uiType,
-        parsed,
-      });
-
-      lastIndex = match.index + match[0].length;
-    }
-
-    // Add remaining text after last ui-response
-    if (lastIndex < content.length) {
-      const textContent = content.substring(lastIndex);
-      if (textContent.trim()) {
-        segments.push({ type: 'text', content: textContent });
-      }
-    }
-
-    return segments;
-  };
+  }, [message.content, parsed.thinking]);
 
   // OPTIMIZATION: Memoize content segments to avoid re-parsing on every render
-  // Only re-compute when the actual content changes or streaming status changes
+  // Only re-compute when the actual content changes
   const contentSegments = useMemo(
     () => splitContentWithUIResponses(parsed.response),
     [parsed.response]
