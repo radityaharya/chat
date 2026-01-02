@@ -20,6 +20,42 @@ interface UploadFileResponse {
 }
 
 export const workspaceApi = {
+  waitForReady: async (maxRetries = 10): Promise<void> => {
+    for (let i = 0; i < maxRetries; i++) {
+      try {
+        const res = await fetch('/api/v1/tools/container', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            action: 'manage_container',
+            container_action: 'status'
+          }),
+        });
+        if (res.ok) {
+          const data = await res.json();
+          if (data.success && data.data?.status === 'running') {
+            return;
+          }
+          // If not running, attempt to start it
+          if (data.success && data.data?.status !== 'running') {
+            await fetch('/api/v1/tools/container', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                action: 'manage_container',
+                container_action: 'start'
+              }),
+            });
+          }
+        }
+      } catch (e) {
+        console.warn('Container readiness check failed, retrying...', e);
+      }
+      await new Promise(resolve => setTimeout(resolve, 2000));
+    }
+    throw new Error('Container failed to become ready');
+  },
+
   listFiles: async (conversationId: string): Promise<FileEntry[]> => {
     const res = await fetch(`/api/v1/workspaces/${conversationId}/files`);
     if (!res.ok) {

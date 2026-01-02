@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { useActiveConversationId } from '@/store';
 import { useContainer } from './useContainer';
+import { workspaceApi } from '@/api/workspace';
 
 export function useAutoCd() {
   const activeConversationId = useActiveConversationId();
@@ -15,6 +16,8 @@ export function useAutoCd() {
 
       const setupWorkspace = async () => {
         try {
+          // Ensure container is ready
+          await workspaceApi.waitForReady();
           // Create directory if it doesn't exist AND cd into it
           await runCommand({ command: `mkdir -p ${workspacePath} && cd ${workspacePath}`, silent: true });
           // Manually update the store CWD since runCommand doesn't detect it for complex commands
@@ -26,5 +29,5 @@ export function useAutoCd() {
 
       setupWorkspace();
     }
-  }, [activeConversationId, runCommand]);
+  }, [activeConversationId, runCommand, setCwd]);
 }

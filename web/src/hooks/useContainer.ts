@@ -1,6 +1,7 @@
 import { useTerminalStore } from '@/store/terminal';
 import { useActiveConversationId } from '../store';
 import { useMutation } from '@tanstack/react-query';
+import { workspaceApi } from '@/api/workspace';
 
 interface ContainerToolResponse {
   success: boolean;
@@ -44,6 +45,7 @@ export function useContainer() {
     mutationFn: async ({ command, silent = false }: { command: string; silent?: boolean }) => {
       setPending(true);
       try {
+        await workspaceApi.waitForReady();
         let finalCommand = command;
         const cdTarget = parseCd(command);
 

@@ -1,5 +1,5 @@
 import { useState, useRef } from 'react';
-import { useQuery, useMutation } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useApiKey, useAddMessage, useUpdateMessage, type Message, useSetMessages, useEnabledTools, useActiveConversationId, useUIResponseEnabled } from '@/store';
 import { getToolDefinitions, tools } from '@/tools';
 import { UI_RESPONSE_GUIDE } from '@/lib/ui-response-guide';
@@ -92,6 +92,7 @@ export function useSendMessage() {
   const enabledTools = useEnabledTools();
   const activeConversationId = useActiveConversationId();
   const uiResponseEnabled = useUIResponseEnabled();
+  const queryClient = useQueryClient();
   const [isStreaming, setIsStreaming] = useState(false);
   const abortControllerRef = useRef<AbortController | null>(null);
 
@@ -410,6 +411,23 @@ export function useSendMessage() {
 
     abortControllerRef.current = new AbortController();
     setIsStreaming(true);
+
+    // Also upload attachments to workspace if conversation is active
+    if (activeConversationId && attachments && attachments.length > 0) {
+      // Start all uploads and wait for them so the LLM can see them in the system prompt
+      try {
+        // Ensure container is ready before uploading
+        await workspaceApi.waitForReady();
+
+        await Promise.all(attachments.map(file =>
+          workspaceApi.uploadFile(activeConversationId, file)
+        ));
+        // Update file list in cache
+        queryClient.invalidateQueries({ queryKey: ['workspace-files', activeConversationId] });
+      } catch (err) {
+        console.error("Failed to upload attachments to workspace", err);
+      }
+    }
 
     // Prepare history
     let currentMessages = conversationHistory

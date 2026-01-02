@@ -63,6 +63,7 @@ export function useAutoSaveArtifacts() {
             const blob = new Blob([artifact.code], { type: 'text/plain' });
             const file = new File([blob], artifact.title);
             console.log(`[AutoSave] Uploading artifact: ${artifact.title}`);
+            await workspaceApi.waitForReady();
             await workspaceApi.uploadFile(activeConversationId, file);
             // Could add toast here
           } catch (error) {
