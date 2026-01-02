@@ -1,73 +1,13 @@
 import { create } from 'zustand';
-import { persist, createJSONStorage, type StateStorage } from 'zustand/middleware';
+import { persist, createJSONStorage } from 'zustand/middleware';
 import { useShallow } from 'zustand/react/shallow';
 import { nanoid } from 'nanoid';
 import { tools } from '@/tools';
 import type { ToolUIPart } from 'ai';
-import { get, set, del } from 'idb-keyval';
+import { createConversationStorage } from '@/lib/conversation-storage';
 
-// Debounced storage wrapper to batch writes during streaming
-// This prevents IndexedDB writes on every updateMessage call during streaming
-const createDebouncedStorage = (delay = 1000): StateStorage => {
-  let pendingWrite: { name: string; value: string } | null = null;
-  let timeoutId: ReturnType<typeof setTimeout> | null = null;
-
-  const flush = async () => {
-    if (pendingWrite) {
-      await set(pendingWrite.name, pendingWrite.value);
-      pendingWrite = null;
-    }
-  };
-
-  // Flush on page unload to prevent data loss
-  if (typeof window !== 'undefined') {
-    window.addEventListener('beforeunload', () => {
-      if (pendingWrite) {
-        // Use sync localStorage as fallback for emergency save
-        try {
-          localStorage.setItem(`${pendingWrite.name}_backup`, pendingWrite.value);
-        } catch {
-          // Storage full, ignore
-        }
-      }
-    });
-  }
-
-  return {
-    getItem: async (name: string): Promise<string | null> => {
-      // If there's a pending write for this key, return the pending value
-      if (pendingWrite?.name === name) {
-        return pendingWrite.value;
-      }
-      const value = await get(name);
-      return value ?? null;
-    },
-    setItem: async (name: string, value: string): Promise<void> => {
-      pendingWrite = { name, value };
-
-      if (timeoutId) {
-        clearTimeout(timeoutId);
-      }
-
-      timeoutId = setTimeout(async () => {
-        await flush();
-        timeoutId = null;
-      }, delay);
-    },
-    removeItem: async (name: string): Promise<void> => {
-      if (pendingWrite?.name === name) {
-        pendingWrite = null;
-      }
-      if (timeoutId) {
-        clearTimeout(timeoutId);
-        timeoutId = null;
-      }
-      await del(name);
-    },
-  };
-};
-
-const indexedDBStorage = createDebouncedStorage(1000); // 1 second debounce
+// Use the optimized conversation storage that stores each conversation separately
+const conversationStorage = createConversationStorage();
 
 interface Message {
   id: string;
@@ -122,6 +62,7 @@ interface UIState {
   createConversation: () => string;
   deleteConversation: (id: string) => void;
   setActiveConversation: (id: string) => void;
+  setConversationTitle: (id: string, title: string) => void;
 
   // Message actions (operate on active conversation)
   addMessage: (message: Message) => void;
@@ -217,6 +158,21 @@ export const useUIStore = create<UIState>()(
       }),
 
       setActiveConversation: (id) => set({ activeConversationId: id }),
+
+      setConversationTitle: (id, title) => set((state) => {
+        if (!state.conversations[id]) return {};
+
+        const chat = { ...state.conversations[id] };
+        chat.title = title;
+        chat.updatedAt = Date.now();
+
+        return {
+          conversations: {
+            ...state.conversations,
+            [id]: chat
+          }
+        };
+      }),
 
       addMessage: (message) => set((state) => {
         let activeId = state.activeConversationId;
@@ -487,15 +443,13 @@ export const useUIStore = create<UIState>()(
       uiResponseEnabled: true,
       setUIResponseEnabled: (enabled) => set({ uiResponseEnabled: enabled }),
       toggleUIResponseEnabled: () => set((state) => ({ uiResponseEnabled: !state.uiResponseEnabled })),
-
     }),
     {
-      name: 'chat-ui-store',
-      storage: createJSONStorage(() => indexedDBStorage),
-      version: 1, // Increment when making breaking changes to state shape
+      name: 'chat-store',
+      storage: createJSONStorage(() => conversationStorage),
+      version: 2, // Increment for new storage format
       partialize: (state) => ({
-        // CRITICAL: DO NOT persist conversations - causes OOM with large data
-        // Conversations are synced with backend via useHistory hook
+        // all state is now persisted efficiently via the adapter
         darkMode: state.darkMode,
         apiKey: state.apiKey,
         selectedModel: state.selectedModel,
@@ -509,23 +463,15 @@ export const useUIStore = create<UIState>()(
       }),
       // Migration function for handling version updates
       migrate: (persistedState: any, version: number) => {
-        if (version === 0) {
-          // Migration from v0 to v1 (initial IndexedDB migration)
-          // No state shape changes, just storage backend change
-          console.log('[Store] Migrated from localStorage to IndexedDB');
-        }
+        console.log('[Store] Hydrating state version:', version);
         return persistedState;
       },
-      // Optional: Add hydration callbacks for debugging
       onRehydrateStorage: () => {
-        console.log('[Store] Hydration started from IndexedDB');
-        return (state, error) => {
+        return (_state, error) => {
           if (error) {
             console.error('[Store] Hydration error:', error);
           } else {
-            console.log('[Store] Hydration finished', {
-              conversationCount: state ? Object.keys(state.conversations || {}).length : 0
-            });
+            console.log('[Store] Hydration finished');
           }
         };
       },
@@ -546,6 +492,7 @@ export const useActiveConversationId = () => useUIStore((s) => s.activeConversat
 export const useCreateConversation = () => useUIStore((s) => s.createConversation);
 export const useDeleteConversation = () => useUIStore((s) => s.deleteConversation);
 export const useSetActiveConversation = () => useUIStore((s) => s.setActiveConversation);
+export const useSetConversationTitle = () => useUIStore((s) => s.setConversationTitle);
 
 const EMPTY_MESSAGES: Message[] = [];
 const EMPTY_CHECKPOINTS: Checkpoint[] = [];

@@ -1,12 +1,13 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useCallback, useEffect } from 'react';
 import { useNavigate } from '@tanstack/react-router';
 import { useUIStore } from '@/store';
 import { useShallow } from 'zustand/react/shallow';
 import { useHistory } from '@/hooks/useHistory';
+import { searchConversations } from '@/lib/conversation-storage';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Plus, Search, Trash2, MessageSquare, X } from 'lucide-react';
+import { Plus, Search, Trash2, MessageSquare, X, Loader2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import {
   Dialog,
@@ -39,16 +40,55 @@ export function ChatSidebar({ className, isOpen = true, onClose, isMobile = fals
 
   const [search, setSearch] = useState('');
   const [deleteId, setDeleteId] = useState<string | null>(null);
+  const [searchResults, setSearchResults] = useState<typeof conversations[keyof typeof conversations][]>([]);
+  const [isSearching, setIsSearching] = useState(false);
 
-  // Memoize filtered and sorted chats to avoid re-computing on every render
-  const filteredChats = useMemo(() =>
-    Object.values(conversations)
-      .filter((c) => c.title.toLowerCase().includes(search.toLowerCase()))
-      .sort((a, b) => b.updatedAt - a.updatedAt),
-    [conversations, search]
-  );
+  // Perform search against IndexedDB
+  useEffect(() => {
+    if (!search.trim()) {
+      setSearchResults([]);
+      setIsSearching(false);
+      return;
+    }
 
-  const handleCreateChat = () => {
+    setIsSearching(true);
+    const debounceTimer = setTimeout(async () => {
+      try {
+        const results = await searchConversations(search);
+        // Map back to format with extra match data
+        setSearchResults(results.map(r => ({
+          id: r.id,
+          title: r.title,
+          messages: [],
+          checkpoints: [],
+          updatedAt: r.updatedAt,
+          matches: r.matches, // Pass through matches
+        })));
+      } catch (err) {
+        console.error('Search failed:', err);
+      } finally {
+        setIsSearching(false);
+      }
+    }, 150); // Debounce
+
+    return () => clearTimeout(debounceTimer);
+  }, [search]);
+
+  // Use search results when searching, otherwise use Zustand conversations
+  const displayedChats = useMemo(() => {
+    if (search.trim() && searchResults.length > 0) {
+      return searchResults;
+    }
+    if (search.trim()) {
+      // Fallback local filter
+      return Object.values(conversations)
+        .filter((c) => c.title.toLowerCase().includes(search.toLowerCase()))
+        .sort((a, b) => b.updatedAt - a.updatedAt);
+    }
+    return Object.values(conversations).sort((a, b) => b.updatedAt - a.updatedAt);
+  }, [conversations, search, searchResults]);
+
+  const handleCreateChat = useCallback(() => {
     const newId = createConversation();
     if (newId) {
       navigate({ to: `/c/${newId}` });
@@ -57,15 +97,32 @@ export function ChatSidebar({ className, isOpen = true, onClose, isMobile = fals
     if (isMobile && onClose) {
       onClose();
     }
-  };
+  }, [createConversation, navigate, isMobile, onClose]);
 
-  const handleSelectChat = (chatId: string) => {
+  const handleSelectChat = useCallback((chatId: string, messageId?: string) => {
     setActiveConversation(chatId);
-    navigate({ to: `/c/${chatId}` });
+
+    // Navigate with message hash if provided
+    const to = `/c/${chatId}` + (messageId ? `?msg=${messageId}` : '');
+    navigate({ to });
+
     if (isMobile && onClose) {
       onClose();
     }
-  };
+  }, [setActiveConversation, navigate, isMobile, onClose]);
+
+  const handleDeleteChat = useCallback(async () => {
+    if (!deleteId) return;
+
+    try {
+      // Delete from backend first
+      await deleteConversationWithSync(deleteId);
+    } catch (error) {
+      console.error('Failed to delete conversation:', error);
+    } finally {
+      setDeleteId(null);
+    }
+  }, [deleteId, deleteConversationWithSync]);
 
   return (
     <div
@@ -105,28 +162,36 @@ export function ChatSidebar({ className, isOpen = true, onClose, isMobile = fals
         <div className="relative">
           <Search className="absolute left-2.5 top-2.5 size-3.5 text-muted-foreground" />
           <Input
-            placeholder="Search chats..."
+            placeholder="Search conversations..."
             className="pl-8 h-8 text-xs bg-terminal-bg border-terminal-border focus-visible:ring-terminal-primary"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
           />
+          {isSearching && (
+            <Loader2 className="absolute right-2.5 top-2.5 size-3.5 text-muted-foreground animate-spin" />
+          )}
         </div>
+        {search.trim() && !isSearching && (
+          <div className="text-xs text-muted-foreground">
+            {displayedChats.length} result{displayedChats.length !== 1 ? 's' : ''}
+          </div>
+        )}
       </div>
 
       <ScrollArea className="flex-1 h-px">
         <div className="p-2 space-y-1">
-          {filteredChats.length === 0 ? (
+          {displayedChats.length === 0 ? (
             <div className="text-center text-xs text-muted-foreground py-8">
-              No chats found
+              {search ? 'No matching conversations' : 'No chats yet'}
             </div>
           ) : (
-            filteredChats.map((chat) => (
-              <div key={chat.id} className="group flex items-center gap-1 relative">
+            displayedChats.map((chat: any) => (
+              <div key={chat.id} className="relative group">
                 <Button
                   variant={activeId === chat.id ? "secondary" : "ghost"}
                   size="sm"
                   className={cn(
-                    "flex-1 justify-start text-left text-xs font-normal h-9 truncate pr-8",
+                    "w-full justify-start text-left text-xs font-normal h-9 truncate pr-8 mb-0.5",
                     activeId === chat.id && "bg-terminal-border text-terminal-text shadow-sm"
                   )}
                   onClick={() => handleSelectChat(chat.id)}
@@ -134,11 +199,36 @@ export function ChatSidebar({ className, isOpen = true, onClose, isMobile = fals
                   <MessageSquare className="mr-2 size-3.5 shrink-0 opacity-70" />
                   <span className="truncate">{chat.title || "New Chat"}</span>
                 </Button>
+
+                {/* Search Matches */}
+                {chat.matches && chat.matches.length > 0 && (
+                  <div className="pl-6 pr-2 pb-2 space-y-1">
+                    {chat.matches.slice(0, 3).map((match: any, idx: number) => (
+                      <div
+                        key={`${chat.id}-${match.messageId}-${idx}`}
+                        className="text-[10px] text-muted-foreground bg-terminal-surface/50 hover:bg-terminal-surface p-1.5 rounded cursor-pointer border border-transparent hover:border-terminal-border transition-colors truncate"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleSelectChat(chat.id, match.messageId);
+                        }}
+                        title={match.preview}
+                      >
+                        <span className="opacity-50 mr-1">↳</span> "{match.preview}"
+                      </div>
+                    ))}
+                    {chat.matches.length > 3 && (
+                      <div className="text-[10px] text-muted-foreground pl-2 opacity-50">
+                        +{chat.matches.length - 3} more matches
+                      </div>
+                    )}
+                  </div>
+                )}
+
                 <Button
                   variant="ghost"
                   size="icon-sm"
                   className={cn(
-                    "absolute right-1 w-6 h-6 transition-opacity hover:bg-terminal-red/10 hover:text-terminal-red",
+                    "absolute top-1.5 right-1 w-6 h-6 transition-opacity hover:bg-terminal-red/10 hover:text-terminal-red",
                     isMobile ? "opacity-100" : "opacity-0 group-hover:opacity-100"
                   )}
                   onClick={(e) => {
@@ -166,16 +256,7 @@ export function ChatSidebar({ className, isOpen = true, onClose, isMobile = fals
             <Button variant="ghost" onClick={() => setDeleteId(null)}>Cancel</Button>
             <Button
               variant="destructive"
-              onClick={async () => {
-                if (deleteId) {
-                  try {
-                    await deleteConversationWithSync(deleteId);
-                  } catch (error) {
-                    console.error('Failed to delete conversation:', error);
-                  }
-                }
-                setDeleteId(null);
-              }}
+              onClick={handleDeleteChat}
             >
               Delete
             </Button>

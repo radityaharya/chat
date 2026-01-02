@@ -6,6 +6,7 @@ import { getToolDefinitions, tools } from '@/tools';
 import { UI_RESPONSE_GUIDE } from '@/lib/ui-response-guide';
 import { parseFiles } from '@/lib/file-parser';
 import { workspaceApi } from '@/api/workspace';
+import { generateConversationTitle } from '@/lib/title-generator';
 import type { ToolUIPart } from 'ai';
 
 const API_BASE_URL = '/api';
@@ -604,6 +605,29 @@ export function useSendMessage() {
     addMessage(assistantMessage);
 
     await streamResponse(currentMessages, model, assistantMessageId);
+
+    // Generate title in background after first message exchange
+    // Use setTimeout to not block the main flow
+    setTimeout(async () => {
+      try {
+        const currentConvId = useUIStore.getState().activeConversationId;
+        if (currentConvId) {
+          const conversation = useUIStore.getState().conversations[currentConvId];
+          const assistantMsg = conversation?.messages.find(m => m.id === assistantMessageId);
+          if (assistantMsg && assistantMsg.content) {
+            await generateConversationTitle(
+              currentConvId,
+              model,
+              content,
+              assistantMsg.content,
+              apiKey
+            );
+          }
+        }
+      } catch (error) {
+        console.error('[Chat] Title generation failed:', error);
+      }
+    }, 100);
   };
 
   const regenerate = async (

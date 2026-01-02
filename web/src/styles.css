@@ -270,6 +270,25 @@ code {
   }
 }
 
+/* Message Highlight Animation */
+@keyframes highlight-fade {
+  0% {
+    background-color: rgb(var(--t-blue) / 0.15);
+    box-shadow: -2px 0 0 0 rgb(var(--t-blue) / 0.5);
+  }
+
+  100% {
+    background-color: transparent;
+    box-shadow: -2px 0 0 0 transparent;
+  }
+}
+
+.message-highlight {
+  animation: highlight-fade 2s ease-out;
+  border-radius: 6px;
+  /* Match standard border radius slightly */
+}
+
 /* Mobile-specific styles */
 
 /* Dynamic viewport height (set by JavaScript) */

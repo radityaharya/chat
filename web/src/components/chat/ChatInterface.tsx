@@ -82,6 +82,11 @@ export function ChatInterface() {
   const { data: authStatus, isLoading: isCheckingAuth } = useCheckAuth();
   const { syncHistory, loadHistory, syncStatus } = useHistory();
 
+  // Determine if we are starting with a specific message to highlight
+  const startMessageId = typeof window !== 'undefined'
+    ? new URLSearchParams(window.location.search).get('msg')
+    : null;
+
   // Mobile hooks
   useViewportHeight();
   const { isMobile } = useMobileDetect();
@@ -155,6 +160,39 @@ export function ChatInterface() {
 
     return () => clearTimeout(timeoutId);
   }, [isStreaming, messages.length, authStatus, syncHistory]);
+
+  // Scroll to message from URL param (Search navigation)
+  useEffect(() => {
+    if (messages.length === 0) return;
+
+    const params = new URLSearchParams(window.location.search);
+    const msgId = params.get('msg');
+
+    if (msgId) {
+      // Use polling to robustly find the element even if rendering is delayed
+      let attempts = 0;
+      const maxAttempts = 50; // 5 seconds max
+      const intervalId = setInterval(() => {
+        const element = document.getElementById(`message-${msgId}`);
+        if (element) {
+          element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          // Flash highlight
+          element.classList.add('message-highlight');
+          setTimeout(() => {
+            element.classList.remove('message-highlight');
+          }, 2000);
+          clearInterval(intervalId); // Found it, stop polling
+        }
+
+        attempts++;
+        if (attempts >= maxAttempts) {
+          clearInterval(intervalId); // Give up
+        }
+      }, 100);
+
+      return () => clearInterval(intervalId);
+    }
+  }, [messages, activeId]); // Run when messages load or conversation changes
 
 
   useEffect(() => {
@@ -374,7 +412,11 @@ export function ChatInterface() {
 
 
         {/* Chat Messages */}
-        <Conversation className="flex-1 bg-terminal-bg">
+        <Conversation
+          key={activeId} // CRITICAL: Reset scroll state when conversation changes
+          className="flex-1 bg-terminal-bg"
+          initial={startMessageId ? false : "smooth"}
+        >
           <ConversationContent className="max-w-4xl mx-auto w-full py-3 px-3 sm:py-4 sm:px-4 relative z-0">
             {messages.length === 0 ? (
               <ConversationEmptyState

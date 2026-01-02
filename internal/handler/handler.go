@@ -30,6 +30,8 @@ const (
 	authSetupPath         = "/v1/auth/setup"
 	authAPIKeysPath       = "/v1/auth/api-keys"
 	historyPath           = "/v1/user/me/history"
+	historyManifestPath   = "/v1/user/me/history/manifest"
+	historyDeltaPath      = "/v1/user/me/history/delta"
 	configPath            = "/v1/user/me/config"
 	attachmentsPath       = "/v1/attachments/"
 	exaToolPath           = "/v1/tools/exa"
@@ -234,6 +236,20 @@ func handleProtectedEndpoints(w http.ResponseWriter, r *http.Request, cfg *model
 
 		if r.URL.Path == historyPath && r.Method == "DELETE" {
 			authManager.DeleteHistoryItem(w, r)
+			logResponse(cfg.Logger, w)
+			return true
+		}
+
+		// History manifest endpoint (lightweight sync)
+		if r.URL.Path == historyManifestPath && r.Method == "GET" {
+			authManager.GetHistoryManifest(w, r)
+			logResponse(cfg.Logger, w)
+			return true
+		}
+
+		// History delta sync endpoint
+		if r.URL.Path == historyDeltaPath && r.Method == "POST" {
+			authManager.DeltaSyncHistory(w, r)
 			logResponse(cfg.Logger, w)
 			return true
 		}

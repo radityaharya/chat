@@ -57,6 +57,7 @@ type ConversationHistory struct {
 	UserID         int64           `json:"user_id,omitempty"`
 	ConversationID string          `json:"conversation_id"`
 	Version        int64           `json:"version"`
+	Hash           string          `json:"hash,omitempty"` // Content hash for change detection
 	Title          string          `json:"title"`
 	Data           json.RawMessage `json:"data"` // Stores the full conversation state (messages, checkpoints, etc.)
 	UpdatedAt      time.Time       `json:"updated_at"`
@@ -72,6 +73,34 @@ type HistorySyncRequest struct {
 type HistorySyncResponse struct {
 	Conversations []ConversationHistory `json:"conversations"`
 	Conflicts     []string              `json:"conflicts,omitempty"` // IDs of conversations with conflicts
+}
+
+// ManifestItem represents a lightweight conversation summary for diff comparison
+type ManifestItem struct {
+	ConversationID string `json:"conversation_id"`
+	Hash           string `json:"hash"`
+	UpdatedAt      int64  `json:"updated_at"` // Unix timestamp milliseconds
+	Version        int64  `json:"version"`
+}
+
+// ManifestResponse represents the list of conversation hashes
+type ManifestResponse struct {
+	Items []ManifestItem `json:"items"`
+}
+
+// DeltaSyncRequest represents a request to sync only changed conversations
+type DeltaSyncRequest struct {
+	Push      []ConversationHistory `json:"push"`       // Conversations to push to server
+	PullIDs   []string              `json:"pull_ids"`   // Conversation IDs to pull from server
+	DeleteIDs []string              `json:"delete_ids"` // Conversations deleted locally
+}
+
+// DeltaSyncResponse represents the response from a delta sync operation
+type DeltaSyncResponse struct {
+	Pushed        []string              `json:"pushed"`                   // IDs that were successfully pushed
+	Pulled        []ConversationHistory `json:"pulled"`                   // Conversations pulled from server
+	Conflicts     []string              `json:"conflicts,omitempty"`      // Conflict IDs (if any)
+	ServerDeleted []string              `json:"server_deleted,omitempty"` // IDs deleted on server
 }
 
 // UserConfig represents a user's configuration settings
