@@ -1,6 +1,6 @@
 import { useState, useRef } from 'react';
 import { useQuery, useMutation } from '@tanstack/react-query';
-import { useApiKey, useAddMessage, useUpdateMessage, type Message, useSetMessages, useEnabledTools, useActiveConversationId } from '@/store';
+import { useApiKey, useAddMessage, useUpdateMessage, type Message, useSetMessages, useEnabledTools, useActiveConversationId, useUIResponseEnabled } from '@/store';
 import { getToolDefinitions, tools } from '@/tools';
 import { UI_RESPONSE_GUIDE } from '@/lib/ui-response-guide';
 import { parseFiles } from '@/lib/file-parser';
@@ -91,6 +91,7 @@ export function useSendMessage() {
   const setMessages = useSetMessages();
   const enabledTools = useEnabledTools();
   const activeConversationId = useActiveConversationId();
+  const uiResponseEnabled = useUIResponseEnabled();
   const [isStreaming, setIsStreaming] = useState(false);
   const abortControllerRef = useRef<AbortController | null>(null);
 
@@ -419,8 +420,8 @@ export function useSendMessage() {
       }));
 
     if (systemPrompt && systemPrompt.trim()) {
-      // Always append UI response guide to user's system prompt
-      let fullSystemPrompt = systemPrompt + UI_RESPONSE_GUIDE;
+      // Always append UI response guide to user's system prompt if enabled
+      let fullSystemPrompt = systemPrompt + (uiResponseEnabled ? UI_RESPONSE_GUIDE : '');
 
       // Inject workspace files if available
       if (activeConversationId) {
@@ -437,8 +438,8 @@ export function useSendMessage() {
 
       currentMessages = [{ role: 'system', content: fullSystemPrompt }, ...currentMessages];
     } else {
-      // If no custom system prompt, just use the UI guide
-      let prompt = UI_RESPONSE_GUIDE.trim();
+      // If no custom system prompt, just use the UI guide if enabled
+      let prompt = uiResponseEnabled ? UI_RESPONSE_GUIDE.trim() : '';
 
       // Inject workspace files if available
       if (activeConversationId) {
@@ -608,8 +609,8 @@ export function useSendMessage() {
       }));
 
     if (systemPrompt && systemPrompt.trim()) {
-      // Always append UI response guide to user's system prompt
-      let fullSystemPrompt = systemPrompt + UI_RESPONSE_GUIDE;
+      // Always append UI response guide to user's system prompt if enabled
+      let fullSystemPrompt = systemPrompt + (uiResponseEnabled ? UI_RESPONSE_GUIDE : '');
 
       // Inject workspace files if available
       if (activeConversationId) {
@@ -626,8 +627,8 @@ export function useSendMessage() {
 
       apiMessages = [{ role: 'system', content: fullSystemPrompt }, ...apiMessages];
     } else {
-      // If no custom system prompt, just use the UI guide
-      let prompt = UI_RESPONSE_GUIDE.trim();
+      // If no custom system prompt, just use the UI guide if enabled
+      let prompt = uiResponseEnabled ? UI_RESPONSE_GUIDE.trim() : '';
 
       // Inject workspace files if available
       if (activeConversationId) {

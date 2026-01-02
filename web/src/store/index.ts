@@ -90,7 +90,11 @@ interface UIState {
   setLastSyncedAt: (timestamp: number | null) => void;
   setSyncError: (error: string | null) => void;
 
-  // Config actions
+  // UI Settings
+  uiResponseEnabled: boolean;
+  setUIResponseEnabled: (enabled: boolean) => void;
+  toggleUIResponseEnabled: () => void;
+
   // Config actions
   // fetchConfig removed, handled by hook
 }
@@ -416,6 +420,11 @@ export const useUIStore = create<UIState>()(
       setLastSyncedAt: (timestamp) => set({ lastSyncedAt: timestamp }),
       setSyncError: (error) => set({ syncError: error }),
 
+      // UI Settings
+      uiResponseEnabled: true,
+      setUIResponseEnabled: (enabled) => set({ uiResponseEnabled: enabled }),
+      toggleUIResponseEnabled: () => set((state) => ({ uiResponseEnabled: !state.uiResponseEnabled })),
+
     }),
     {
       name: 'chat-ui-store',
@@ -432,6 +441,7 @@ export const useUIStore = create<UIState>()(
         lastSyncedAt: state.lastSyncedAt,
         enabledTools: state.enabledTools,
         artifactsPanelOpen: state.artifactsPanelOpen,
+        uiResponseEnabled: state.uiResponseEnabled,
       }),
     }
   )
@@ -494,6 +504,11 @@ export const useToggleTool = () => useUIStore((s) => s.toggleTool);
 export const useArtifactsPanelOpen = () => useUIStore((s) => s.artifactsPanelOpen);
 export const useSetArtifactsPanelOpen = () => useUIStore((s) => s.setArtifactsPanelOpen);
 export const useToggleArtifactsPanel = () => useUIStore((s) => s.toggleArtifactsPanel);
+
+// UI Settings hooks
+export const useUIResponseEnabled = () => useUIStore((s) => s.uiResponseEnabled);
+export const useSetUIResponseEnabled = () => useUIStore((s) => s.setUIResponseEnabled);
+export const useToggleUIResponseEnabled = () => useUIStore((s) => s.toggleUIResponseEnabled);
 
 // Export Message type
 export type { Message, Conversation, Checkpoint };

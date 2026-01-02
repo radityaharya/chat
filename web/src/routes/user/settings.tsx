@@ -5,6 +5,9 @@ import { Copy, Check, Trash2, Key, LogOut, ArrowLeft } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Spinner } from '@/components/ui/spinner';
+import { Switch } from '@/components/ui/switch';
+import { useUIResponseEnabled, useSetUIResponseEnabled } from '@/store';
+import { Sparkles } from 'lucide-react';
 
 export const Route = createFileRoute('/user/settings')({
   component: UserSettingsPage,
@@ -22,6 +25,9 @@ function UserSettingsPage() {
   const [createdKey, setCreatedKey] = useState<string | null>(null);
   const [copiedKeyId, setCopiedKeyId] = useState<number | null>(null);
   const [showCreateForm, setShowCreateForm] = useState(false);
+
+  const uiResponseEnabled = useUIResponseEnabled();
+  const setUIResponseEnabled = useSetUIResponseEnabled();
 
   const handleCreateKey = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -262,6 +268,28 @@ function UserSettingsPage() {
               <p className="text-xs mt-1">Create one to get started</p>
             </div>
           )}
+        </div>
+
+        {/* Chat Settings */}
+        <div className="bg-terminal-surface rounded border border-terminal-border p-6 mb-6">
+          <h2 className="text-lg font-semibold mb-4">Chat Settings</h2>
+          <div className="space-y-6">
+            <div className="flex items-center justify-between">
+              <div className="space-y-0.5">
+                <div className="flex items-center gap-2">
+                  <Sparkles className="size-4 text-terminal-muted" />
+                  <span className="font-medium">AI UI Responses</span>
+                </div>
+                <p className="text-sm text-terminal-muted max-w-sm">
+                  Allow the AI to render beautiful UI components (like charts, status cards, and forms) for certain types of responses.
+                </p>
+              </div>
+              <Switch
+                checked={uiResponseEnabled}
+                onCheckedChange={setUIResponseEnabled}
+              />
+            </div>
+          </div>
         </div>
 
         {/* Danger Zone */}

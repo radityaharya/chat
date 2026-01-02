@@ -28,6 +28,7 @@ import {
   UIResponseContent,
 } from '@/components/ai-elements/ui-response';
 import type { Message as StoreMessage } from '@/store';
+import { useUIResponseEnabled } from '@/store';
 import {
   Loader2Icon,
   Copy,
@@ -107,6 +108,8 @@ function parseThinkingTags(content: string): ParsedContent {
 
 export function ChatMessage({ message, onRegenerate, onDelete, onCheckpoint, onFork }: ChatMessageProps) {
   console.log('[PERF] ChatMessage render', { id: message.id.slice(-8), streaming: message.streaming, contentLength: message.content.length });
+
+  const uiResponseEnabled = useUIResponseEnabled();
 
   const [copied, setCopied] = useState(false);
 
@@ -269,6 +272,15 @@ export function ChatMessage({ message, onRegenerate, onDelete, onCheckpoint, onF
                     </div>
                   );
                 } else {
+                  // If UI responses are disabled, don't render the fancy component
+                  if (!uiResponseEnabled) {
+                    return (
+                      <MessageResponse key={index}>
+                        {`<ui-response type="${segment.uiType}">${segment.content}</ui-response>`}
+                      </MessageResponse>
+                    );
+                  }
+
                   return (
                     <div key={index} className="my-2">
                       <UIResponse>
