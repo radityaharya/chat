@@ -24,9 +24,10 @@ type Config struct {
 	LLMRouterAPIKey    string            `json:"llmrouter_api_key,omitempty"` // Plaintext router API key
 	UseGeneratedKey    bool              `json:"-"`                           // Exclude from JSON
 	Aliases            map[string]string `json:"aliases,omitempty"`
-	ConfigFilePath     string            `json:"-"`                     // Path to config file, excluded from JSON
-	DatabaseURL        string            `json:"database_url"`          // Database URL for identity system
-	ExaAPIKey          string            `json:"exa_api_key,omitempty"` // Exa API key for search tool
+	ConfigFilePath     string            `json:"-"`                          // Path to config file, excluded from JSON
+	DatabaseURL        string            `json:"database_url"`               // Database URL for identity system
+	ExaAPIKey          string            `json:"exa_api_key,omitempty"`      // Exa API key for search tool
+	GeoapifyAPIKey     string            `json:"geoapify_api_key,omitempty"` // Geoapify API key for geo tool
 }
 
 // ModelPricing represents pricing information for a model

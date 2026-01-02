@@ -33,6 +33,7 @@ const (
 	configPath            = "/v1/user/me/config"
 	attachmentsPath       = "/v1/attachments/"
 	exaToolPath           = "/v1/tools/exa"
+	geoToolPath           = "/v1/tools/geo"
 	containerToolPath     = "/v1/tools/container"
 	contentTypeJSON       = "application/json"
 	streamTruePattern     = `"stream":true`
@@ -261,6 +262,13 @@ func handleProtectedEndpoints(w http.ResponseWriter, r *http.Request, cfg *model
 	// Exa tool endpoint (protected)
 	if r.URL.Path == exaToolPath && r.Method == "POST" {
 		HandleExaTool(w, r, cfg)
+		logResponse(cfg.Logger, w)
+		return true
+	}
+
+	// Geo tool endpoint (protected)
+	if r.URL.Path == geoToolPath && r.Method == "POST" {
+		HandleGeoTool(w, r, cfg)
 		logResponse(cfg.Logger, w)
 		return true
 	}

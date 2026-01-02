@@ -41,7 +41,7 @@ func main() {
 	}
 
 	// Initialize command-line flags
-	configFile, llmRouterAPIKeyEnv, llmRouterAPIKey, listeningPort, logLevel, exaAPIKey := config.InitFlags()
+	configFile, llmRouterAPIKeyEnv, llmRouterAPIKey, listeningPort, logLevel, exaAPIKey, geoapifyAPIKey := config.InitFlags()
 
 	// Initialize the logger
 	logger, err := logging.NewLogger(logLevel)
@@ -60,6 +60,12 @@ func main() {
 	if exaAPIKey != "" {
 		cfg.ExaAPIKey = exaAPIKey
 		logger.Info("Exa API key override applied from command line")
+	}
+
+	// Apply Geoapify API key override from command line if provided
+	if geoapifyAPIKey != "" {
+		cfg.GeoapifyAPIKey = geoapifyAPIKey
+		logger.Info("Geoapify API key override applied from command line")
 	}
 
 	// If using a generated key, print a helpful message

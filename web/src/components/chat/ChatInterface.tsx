@@ -132,13 +132,14 @@ export function ChatInterface() {
   // Load history on initial authentication
   useEffect(() => {
     if (authStatus?.authenticated) {
-      if (!lastSyncedAt) {
-        loadHistory().catch((error) => {
-          console.error('Failed to load history:', error);
-        });
-      }
+      // Always load history on mount to get latest data from server
+      loadHistory().catch((error) => {
+        console.error('Failed to load history:', error);
+      });
     }
-  }, [authStatus, lastSyncedAt, loadHistory]);
+    // Only run once on mount when authentication status changes
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [authStatus?.authenticated]);
 
   // Auto-sync every 2 minutes when authenticated
   useEffect(() => {

@@ -103,20 +103,29 @@ func LoadConfig(configFile, llmRouterAPIKeyEnv, llmRouterAPIKey string, listenin
 		logger.Info("Exa API key loaded from config file")
 	}
 
+	// Load Geoapify API key - environment variable takes precedence over config file
+	if geoKey := os.Getenv("GEOAPIFY_API_KEY"); geoKey != "" {
+		cfg.GeoapifyAPIKey = geoKey
+		logger.Info("Geoapify API key loaded from environment variable")
+	} else if cfg.GeoapifyAPIKey != "" {
+		logger.Info("Geoapify API key loaded from config file")
+	}
+
 	logger.Info("Configuration loading completed successfully")
 	return &cfg, nil
 }
 
 // InitFlags initializes and parses the command-line flags.
-func InitFlags() (string, string, string, int, string, string) {
+func InitFlags() (string, string, string, int, string, string, string) {
 	configFile := flag.String("config", "config.json", "Path to the configuration file")
 	llmRouterAPIKeyEnv := flag.String("llmrouter-api-key-env", "LLMROUTER_API_KEY", "Environment variable for the Chat API key")
 	llmRouterAPIKey := flag.String("llmrouter-api-key", "", "Chat API key to use (takes precedence over environment variable)")
 	listeningPort := flag.Int("port", 0, "Listening port (overrides config file)")
 	logLevel := flag.String("log-level", "warn", "define the log level: debug, info, warn, error, dpanic, panic, fatal")
 	exaAPIKey := flag.String("exa-api-key", "", "Exa API key for search tool (takes precedence over environment variable)")
+	geoapifyAPIKey := flag.String("geoapify-api-key", "", "Geoapify API key for geo tool (takes precedence over environment variable)")
 
 	flag.Parse()
 
-	return *configFile, *llmRouterAPIKeyEnv, *llmRouterAPIKey, *listeningPort, *logLevel, *exaAPIKey
+	return *configFile, *llmRouterAPIKeyEnv, *llmRouterAPIKey, *listeningPort, *logLevel, *exaAPIKey, *geoapifyAPIKey
 }

@@ -12,6 +12,8 @@ import { loremTool } from './implementations/lorem';
 import { colorTool } from './implementations/color';
 import { comulineTool } from './implementations/comuline';
 import { exaTool } from './implementations/exa';
+import { geoTool } from './implementations/geo';
+import { geolocationTool } from './implementations/geolocation';
 import { containerTool } from './implementations/container';
 import { type LocalTool } from './types';
 import {
@@ -27,6 +29,8 @@ import {
   Terminal,
   Search,
   Box,
+  MapPin,
+  Navigation,
   type LucideIcon
 } from 'lucide-react';
 
@@ -48,6 +52,8 @@ export const tools: Record<string, ClientSideTool> = {
   [colorTool.name]: { ...colorTool, icon: Palette },
   [comulineTool.name]: { ...comulineTool, icon: Terminal },
   [exaTool.name]: { ...exaTool, icon: Search },
+  [geoTool.name]: { ...geoTool, icon: MapPin },
+  [geolocationTool.name]: { ...geolocationTool, icon: Navigation },
   [containerTool.name]: { ...containerTool, icon: Box },
 };
 

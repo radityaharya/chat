@@ -427,8 +427,8 @@ export const useUIStore = create<UIState>()(
         apiKey: state.apiKey,
         selectedModel: state.selectedModel,
         systemPrompt: state.systemPrompt,
-        // conversations: state.conversations, // REMOVED - too large for localStorage
-        activeConversationId: state.activeConversationId, // Keep this so we know which to load
+        conversations: state.conversations,
+        activeConversationId: state.activeConversationId,
         lastSyncedAt: state.lastSyncedAt,
         enabledTools: state.enabledTools,
         artifactsPanelOpen: state.artifactsPanelOpen,
