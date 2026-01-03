@@ -58,7 +58,7 @@ const getStatusBadge = (status: ToolUIPart["state"]) => {
   };
 
   return (
-    <Badge className="gap-1.5 rounded-full text-xs" variant="secondary">
+    <Badge className="gap-1.5 rounded-sm text-xs" variant="secondary">
       {icons[status]}
       {labels[status]}
     </Badge>

@@ -47,6 +47,12 @@ import { useSetQuotedText } from '@/store';
 import { Quote } from 'lucide-react';
 import { createPortal } from 'react-dom';
 import { Button } from '../ui/button';
+import {
+  Dialog,
+  DialogContent,
+  DialogTrigger,
+  DialogTitle,
+} from "@/components/ui/dialog";
 
 
 interface ChatMessageProps {
@@ -216,6 +222,7 @@ export const ChatMessage = memo(function ChatMessage({ message, onRegenerate, on
   const hasThinking = parsed.thinking !== null;
   const hasTools = message.parts && message.parts.length > 0;
   const hasImages = message.images && message.images.length > 0;
+  const hasInterleavedContent = message.parts?.some((p: any) => p.type === 'text') ?? false;
 
   // We are streaming the thought if the message is streaming AND we are inside an unclosed think block
   const isStreamingThought = message.streaming && parsed.isThinking;
@@ -263,13 +270,71 @@ export const ChatMessage = memo(function ChatMessage({ message, onRegenerate, on
             <ReasoningContent>{parsed.thinking || ''}</ReasoningContent>
           </Reasoning>
         )}
-        {hasTools && (
-          <div className="flex flex-col mb-3">
-            {message.parts?.map((part, index) => {
-              if (!part.type.startsWith('tool-')) return null;
+        {/* Render parts in order - interleaved text and tool parts */}
+        {hasTools && message.parts?.map((part: any, index) => {
+          // Text part - render as message content
+          if (part.type === 'text') {
+            const textContent = part.content as string;
+            if (!textContent.trim()) return null;
 
-              return (
-                <Tool key={`${part.toolCallId || index}`}>
+            // Parse for UI responses
+            const textSegments = splitContentWithUIResponses(textContent);
+            return (
+              <div key={`text-${index}`} className="flex flex-col gap-2 mb-3">
+                {textSegments.map((segment, segIndex) => {
+                  if (segment.type === 'text') {
+                    const artifactSegments = splitContentWithArtifacts(segment.content);
+                    return (
+                      <div key={segIndex} className="flex flex-col gap-2">
+                        {artifactSegments.map((artPart, pIndex) => {
+                          if (artPart.type === 'text') {
+                            return (
+                              <MessageResponse key={pIndex}>
+                                {artPart.content as string}
+                              </MessageResponse>
+                            );
+                          } else {
+                            const artifact = artPart.content as CodeArtifact;
+                            return (
+                              <MessageArtifact
+                                key={artifact.id || pIndex}
+                                artifact={artifact}
+                                messageId={message.id}
+                                index={pIndex}
+                              />
+                            );
+                          }
+                        })}
+                      </div>
+                    );
+                  } else {
+                    // UI response segment
+                    if (!uiResponseEnabled) {
+                      return (
+                        <MessageResponse key={segIndex}>
+                          {`<ui-response type="${segment.uiType}">${segment.content}</ui-response>`}
+                        </MessageResponse>
+                      );
+                    }
+                    return (
+                      <div key={segIndex} className="my-2">
+                        <UIResponse>
+                          <UIResponseHeader type={segment.uiType} />
+                          <UIResponseContent data={segment.parsed} type={segment.uiType} />
+                        </UIResponse>
+                      </div>
+                    );
+                  }
+                })}
+              </div>
+            );
+          }
+
+          // Tool part - render as tool
+          if (part.type.startsWith('tool-')) {
+            return (
+              <div key={`${part.toolCallId || index}`} className="mb-3">
+                <Tool className='rounded-none bg-terminal-surface'>
                   <ToolHeader
                     type={part.type}
                     state={part.state}
@@ -283,27 +348,19 @@ export const ChatMessage = memo(function ChatMessage({ message, onRegenerate, on
                     />
                   </ToolContent>
                 </Tool>
-              );
-            })}
-          </div>
-        )}
-        {(parsed.response || (!showLoading && !hasTools && !hasImages)) && (
+              </div>
+            );
+          }
+
+          return null;
+        })}
+        {/* Render final content after all tool calls (or all content if no tools) */}
+        {/* Skip this if content is already interleaved in parts */}
+        {!hasInterleavedContent && (parsed.response || (!showLoading && !hasTools && !hasImages)) && (
           <>
             {contentSegments.length > 0 ? (
               contentSegments.map((segment, index) => {
                 if (segment.type === 'text') {
-                  // OPTIMIZATION: Skip expensive artifact parsing during streaming
-                  // Only parse artifacts after message is complete
-                  // if (message.streaming) {
-                  //   console.log('[PERF] ChatMessage: Rendering streaming text', { contentLength: (segment.content as string).length });
-                  //   // During streaming, just render as plain markdown
-                  //   return (
-                  //     <MessageResponse key={index}>
-                  //       {segment.content as string}
-                  //     </MessageResponse>
-                  //   );
-                  // }
-
                   // After streaming completes, split into artifacts
                   const artifactSegments = splitContentWithArtifacts(segment.content);
                   return (
@@ -359,14 +416,33 @@ export const ChatMessage = memo(function ChatMessage({ message, onRegenerate, on
         {message.images && message.images.length > 0 && (
           <div className="flex flex-col gap-2 my-2">
             {message.images.map((img, i) => (
-              <Image
-                key={i}
-                url={img.image_url.url}
-                // Pass dummy values to satisfy potentially required props if strict
-                base64=""
-                mediaType="image/png"
-                uint8Array={new Uint8Array()}
-              />
+              <Dialog key={i}>
+                <DialogTrigger asChild>
+                  <div className="cursor-pointer hover:opacity-90 transition-opacity">
+                    <Image
+                      url={img.image_url.url}
+                      // Pass dummy values to satisfy potentially required props if strict
+                      base64=""
+                      mediaType="image/png"
+                      uint8Array={new Uint8Array()}
+                      alt="Message attachment"
+                    />
+                  </div>
+                </DialogTrigger>
+                <DialogContent className="max-w-4xl w-auto p-0 border-none bg-transparent shadow-none">
+                  <DialogTitle className="sr-only">Image Preview</DialogTitle>
+                  <div className="relative w-full flex items-center justify-center">
+                    <Image
+                      url={img.image_url.url}
+                      base64=""
+                      mediaType="image/png"
+                      uint8Array={new Uint8Array()}
+                      className="max-h-[85vh] w-auto max-w-full object-contain rounded-md"
+                      alt="Message attachment preview"
+                    />
+                  </div>
+                </DialogContent>
+              </Dialog>
             ))}
           </div>
         )}

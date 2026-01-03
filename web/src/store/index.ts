@@ -268,17 +268,26 @@ export const useUIStore = create<UIState>()(
           const msg = chat.messages[msgIndex];
           let newParts = msg.parts || [];
           if (parts) {
-            const nextParts = [...newParts];
-            parts.forEach((inc: any) => {
-              const incId = inc.toolCallId;
-              const idx = incId ? nextParts.findIndex((p: any) => p.toolCallId === incId) : -1;
-              if (idx !== -1) {
-                nextParts[idx] = inc;
-              } else {
-                nextParts.push(inc);
-              }
-            });
-            newParts = nextParts;
+            // Check if parts contain text parts (interleaved content)
+            // If so, replace entirely instead of merging to avoid duplicates
+            const hasTextParts = parts.some((p: any) => p.type === 'text');
+            if (hasTextParts) {
+              // Replace entire parts array for interleaved content
+              newParts = parts;
+            } else {
+              // Original merge logic for tool-only updates
+              const nextParts = [...newParts];
+              parts.forEach((inc: any) => {
+                const incId = inc.toolCallId;
+                const idx = incId ? nextParts.findIndex((p: any) => p.toolCallId === incId) : -1;
+                if (idx !== -1) {
+                  nextParts[idx] = inc;
+                } else {
+                  nextParts.push(inc);
+                }
+              });
+              newParts = nextParts;
+            }
           }
 
           // Update images

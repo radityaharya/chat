@@ -46,61 +46,34 @@ export function ArtifactsPanel() {
   const activeConversationId = useActiveConversationId();
   const { runCommand } = useContainer();
 
-  // CRITICAL FIX: Use ref to cache artifacts and track conversation ID
-  const lastArtifactsRef = useRef<{ message: any, artifacts: CodeArtifact[] }[]>([]);
-  const wasStreamingRef = useRef(false);
-  const lastConversationIdRef = useRef<string | null>(null);
-
   // Reset UI state when conversation changes
   useEffect(() => {
     setViewingFile(null);
     setSearchQuery('');
   }, [activeConversationId]);
 
-  // Check if ANY message is currently streaming
-  const isStreaming = messages.some(m => m.streaming);
-
-  // Extract all artifacts from messages  
-  // ONLY process when streaming status changes from true to false OR conversation changes
+  // Extract only COMPLETE artifacts from messages for the Artifacts tab
+  // Incomplete/streaming artifacts are shown inline in chat, but not here (for performance)
   const artifactsByMessage = useMemo(() => {
-    // Reset cache if conversation changed
-    if (lastConversationIdRef.current !== activeConversationId) {
-      lastConversationIdRef.current = activeConversationId;
-      lastArtifactsRef.current = [];
-      wasStreamingRef.current = false;
-
-      // If no conversation, return empty
-      if (!activeConversationId) {
-        return [];
-      }
+    // If no conversation, return empty
+    if (!activeConversationId) {
+      return [];
     }
 
-    // If streaming, return cached result (don't reprocess)
-    if (isStreaming) {
-      wasStreamingRef.current = true;
-      return lastArtifactsRef.current;
-    }
+    // Process all assistant messages, only include complete artifacts
+    const newArtifacts = messages
+      .filter(m => m.role === 'assistant')
+      .map(message => {
+        const allArtifacts = extractArtifacts(message.content);
+        // Only include complete artifacts (not streaming/incomplete)
+        const completeArtifacts = allArtifacts.filter(a => !a.isIncomplete);
+        if (completeArtifacts.length === 0) return null;
+        return { message, artifacts: completeArtifacts };
+      })
+      .filter(item => item !== null) as { message: typeof messages[0], artifacts: CodeArtifact[] }[];
 
-    // If we just stopped streaming OR first load, reprocess
-    if (wasStreamingRef.current || lastArtifactsRef.current.length === 0) {
-      wasStreamingRef.current = false;
-
-      const newArtifacts = messages
-        .filter(m => m.role === 'assistant' && !m.streaming)
-        .map(message => {
-          const artifacts = extractArtifacts(message.content);
-          if (artifacts.length === 0) return null;
-          return { message, artifacts };
-        })
-        .filter(item => item !== null) as { message: typeof messages[0], artifacts: CodeArtifact[] }[];
-
-      lastArtifactsRef.current = newArtifacts;
-      return newArtifacts;
-    }
-
-    // Return cached if nothing changed
-    return lastArtifactsRef.current;
-  }, [isStreaming, messages, activeConversationId]);
+    return newArtifacts;
+  }, [messages, activeConversationId]);
 
   const filteredArtifacts = useMemo(() => {
     if (!searchQuery.trim()) return artifactsByMessage;
@@ -160,9 +133,9 @@ export function ArtifactsPanel() {
   };
 
   return (
-    <div className="h-full w-full flex flex-col bg-terminal-surface min-h-0">
+    <div className="h-full w-full flex flex-col bg-terminal-bg min-h-0">
       {/* Header with Tabs */}
-      <div className="flex items-center px-4 py-2 border-b border-terminal-border shrink-0 bg-terminal-surface gap-4">
+      <div className="flex items-center px-4 py-2 border-b border-terminal-border shrink-0 bg-terminal-bg gap-4">
         <button
           onClick={() => setActiveTab('artifacts')}
           className={cn(

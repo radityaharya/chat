@@ -14,6 +14,12 @@ import {
 import { cn } from "@/lib/utils";
 import type { FileUIPart, UIMessage } from "ai";
 import {
+  Dialog,
+  DialogContent,
+  DialogTrigger,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
   ChevronLeftIcon,
   PaperclipIcon,
   XIcon,
@@ -391,18 +397,34 @@ export function MessageAttachment({
       {...props}
     >
       {isImage ? (
-        <>
-          <img
-            alt={filename || "attachment"}
-            className="size-full object-cover"
-            height={100}
-            src={data.url}
-            width={100}
-          />
+        <Dialog>
+          <DialogTrigger asChild>
+            <div className="relative group/image overflow-hidden rounded-md cursor-pointer">
+              <img
+                alt={filename || "attachment"}
+                className="size-full object-cover"
+                height={100}
+                src={data.url}
+                width={100}
+              />
+              <div className="absolute inset-0 bg-black/0 group-hover/image:bg-black/10 transition-colors" />
+            </div>
+          </DialogTrigger>
+          <DialogContent className="max-w-4xl w-auto p-0 border-none bg-transparent shadow-none">
+            <DialogTitle className="sr-only">Image Preview</DialogTitle>
+            <div className="relative w-full flex items-center justify-center">
+              <img
+                alt={filename || "attachment"}
+                className="max-h-[85vh] w-auto max-w-full object-contain rounded-md"
+                src={data.url}
+              />
+            </div>
+          </DialogContent>
+
           {onRemove && (
             <Button
               aria-label="Remove attachment"
-              className="absolute top-2 right-2 size-6 rounded-full bg-background/80 p-0 opacity-0 backdrop-blur-sm transition-opacity hover:bg-background group-hover:opacity-100 [&>svg]:size-3"
+              className="absolute top-2 right-2 size-6 rounded-full bg-background/80 p-0 opacity-0 backdrop-blur-sm transition-opacity hover:bg-background group-hover:opacity-100 z-10 [&>svg]:size-3"
               onClick={(e) => {
                 e.stopPropagation();
                 onRemove();
@@ -414,7 +436,7 @@ export function MessageAttachment({
               <span className="sr-only">Remove</span>
             </Button>
           )}
-        </>
+        </Dialog>
       ) : (
         <Collapsible open={isOpen} onOpenChange={setIsOpen}>
           <div className="flex flex-col rounded-lg border border-foreground/10 bg-muted/50 overflow-hidden">

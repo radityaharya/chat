@@ -211,6 +211,10 @@ export function useSendMessage() {
       let allImages: any[] = [];
       const MAX_ITERATIONS = 10;
 
+      // Track all parts (text + tools) in order for interleaved rendering
+      let allParts: any[] = [];
+      let iterationContentStart = 0; // Track where content started for this iteration
+
       // Helper to construct display content with reasoning
       const getFullContent = () => {
         if (assistantReasoning) {
@@ -384,11 +388,30 @@ export function useSendMessage() {
 
         if (finalToolCalls.length === 0) {
           isDone = true;
-          updateMessage(assistantMessageId, getFullContent(), false, undefined, allImages);
+          // Add final text content as a text part if there's content after the last tool calls
+          const finalContent = assistantContent.substring(iterationContentStart);
+          if (finalContent.trim() && allParts.length > 0) {
+            allParts.push({
+              type: 'text' as const,
+              content: finalContent,
+            });
+          }
+          updateMessage(assistantMessageId, getFullContent(), false, allParts.length > 0 ? allParts : undefined, allImages);
           break;
         }
+        // Capture text content that came after previous tool calls (if any)
+        // This is the LLM's response to the previous tool results
+        if (allParts.length > 0) {
+          const iterationContent = assistantContent.substring(iterationContentStart);
+          if (iterationContent.trim()) {
+            allParts.push({
+              type: 'text' as const,
+              content: iterationContent,
+            });
+          }
+        }
 
-        // Handle tool calls
+        // Handle tool calls first
         const toolPartsForUI = finalToolCalls.map(tc => {
           let args = {};
           try { args = JSON.parse(tc.arguments); } catch (e) { }
@@ -402,7 +425,13 @@ export function useSendMessage() {
           } as ToolUIPart;
         });
 
-        updateMessage(assistantMessageId, getFullContent(), true, toolPartsForUI, allImages);
+        // Add tool parts to allParts first
+        allParts.push(...toolPartsForUI);
+
+        // Mark where next iteration's content starts (content will be captured after tool results come back)
+        iterationContentStart = assistantContent.length;
+
+        updateMessage(assistantMessageId, getFullContent(), true, allParts, allImages);
 
         apiMessages.push({
           role: 'assistant',
@@ -417,7 +446,7 @@ export function useSendMessage() {
           }))
         } as any);
 
-        const toolOutputs = await Promise.all(finalToolCalls.map(async (tc, index) => {
+        const toolOutputs = await Promise.all(finalToolCalls.map(async (tc) => {
           let args = {};
           try { args = JSON.parse(tc.arguments); } catch (e) {
             console.error("Failed to parse tool arguments", e);
@@ -437,11 +466,18 @@ export function useSendMessage() {
             isError = true;
           }
 
-          toolPartsForUI[index].state = isError ? 'output-error' : 'output-available';
-          toolPartsForUI[index].output = result;
-          if (isError) toolPartsForUI[index].errorText = JSON.stringify(result.error);
+          // Update the tool part in allParts (find by toolCallId)
+          const partIndex = allParts.findIndex((p: any) => p.toolCallId === tc.id);
+          if (partIndex !== -1) {
+            allParts[partIndex] = {
+              ...allParts[partIndex],
+              state: isError ? 'output-error' : 'output-available',
+              output: result,
+              errorText: isError ? JSON.stringify(result.error) : undefined,
+            };
+          }
 
-          updateMessage(assistantMessageId, getFullContent(), true, [...toolPartsForUI], allImages);
+          updateMessage(assistantMessageId, getFullContent(), true, [...allParts], allImages);
 
           return {
             tool_call_id: tc.id,

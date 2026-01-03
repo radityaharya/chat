@@ -20,7 +20,7 @@ export function useAutoSaveArtifacts(isStreaming: boolean) {
     prevIsStreaming.current = isStreaming;
 
     // Only proceed if we just finished streaming
-    if (wasStreaming && !isStreaming && activeConversationId) {
+    if (activeConversationId) {
       // Look at the last message (it should be the assistant message that just finished)
       // We scan the last few messages just in case, but usually it's the last one.
       const recentMessages = messages.slice(-2);
