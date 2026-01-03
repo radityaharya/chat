@@ -1,5 +1,5 @@
 
-import { useState, useMemo, useCallback } from 'react';
+import { useState, useMemo, useCallback, memo, useDeferredValue } from 'react';
 import {
   Message,
   MessageAttachment,
@@ -145,7 +145,7 @@ function splitContentWithUIResponses(content: string) {
 }
 
 
-export function ChatMessage({ message, onRegenerate, onDelete, onCheckpoint, onFork }: ChatMessageProps) {
+export const ChatMessage = memo(function ChatMessage({ message, onRegenerate, onDelete, onCheckpoint, onFork }: ChatMessageProps) {
   // Direct store access - slightly more efficient than hook wrapper
   const uiResponseEnabled = useUIStore((s) => s.uiResponseEnabled);
 
@@ -181,13 +181,22 @@ export function ChatMessage({ message, onRegenerate, onDelete, onCheckpoint, onF
 
   // OPTIMIZATION: Memoize content segments to avoid re-parsing on every render
   // Only re-compute when the actual content changes
-  const contentSegments = useMemo(
+  const rawContentSegments = useMemo(
     () => splitContentWithUIResponses(parsed.response),
     [parsed.response]
   );
 
+  // React 19: useDeferredValue prevents blocking render during heavy artifact parsing
+  // This fixes the "flash of unrendered content" on page load
+  const contentSegments = useDeferredValue(rawContentSegments);
+
   return (
-    <Message id={`message-${message.id}`} from={message.role} className="group/message">
+    <Message
+      id={`message-${message.id}`}
+      from={message.role}
+      className="group/message"
+      data-streaming={message.streaming ? "true" : undefined}
+    >
       <MessageContent>
         {hasThinking && (
           <Reasoning isStreaming={isStreamingThought}>
@@ -364,4 +373,35 @@ export function ChatMessage({ message, onRegenerate, onDelete, onCheckpoint, onF
       )}
     </Message>
   );
-}
+}, (prevProps, nextProps) => {
+  // Custom comparison for optimal memoization
+  // Only re-render when these specific things change:
+
+  // 1. Message content/state changed
+  if (prevProps.message.content !== nextProps.message.content) return false;
+  if (prevProps.message.streaming !== nextProps.message.streaming) return false;
+  if (prevProps.message.id !== nextProps.message.id) return false;
+  if (prevProps.message.role !== nextProps.message.role) return false;
+
+  // 2. Parts (tool calls) changed - use shallow comparison for speed
+  const prevParts = prevProps.message.parts;
+  const nextParts = nextProps.message.parts;
+  if (prevParts?.length !== nextParts?.length) return false;
+  if (prevParts && nextParts) {
+    for (let i = 0; i < prevParts.length; i++) {
+      if (prevParts[i].toolCallId !== nextParts[i].toolCallId) return false;
+      if (prevParts[i].state !== nextParts[i].state) return false;
+    }
+  }
+
+  // 3. Images changed
+  if (prevProps.message.images?.length !== nextProps.message.images?.length) return false;
+
+  // 4. Attachments changed
+  if (prevProps.message.attachments?.length !== nextProps.message.attachments?.length) return false;
+
+  // Callbacks are stable (useCallback in parent), so skip comparing them
+  return true;
+});
+
+ChatMessage.displayName = 'ChatMessage';

@@ -153,27 +153,30 @@ export function createConversationStorage(): StateStorage {
   return {
     getItem: async (_name: string): Promise<string | null> => {
       try {
-        console.log('[ChatDB] Loading state from IndexedDB...');
+        console.log('[ChatDB] Loading state from IndexedDB (metadata only)...');
 
         // Load settings
         const settingsRecord = await db.settings.get('main');
         const settings = settingsRecord?.value || {};
 
-        // Load all conversations
+        // Load conversation METADATA only (not messages) for fast hydration
+        // Full messages are lazy-loaded by useActiveConversationLoader when needed
         const conversations = await db.conversations.orderBy('updatedAt').reverse().toArray();
         const conversationsMap: Record<string, any> = {};
 
         for (const conv of conversations) {
+          // Store metadata only - messages will be loaded on-demand
           conversationsMap[conv.id] = {
             id: conv.id,
             title: conv.title,
-            messages: conv.messages,
-            checkpoints: conv.checkpoints,
+            messages: [], // Empty - will be lazy-loaded when conversation becomes active
+            checkpoints: [], // Empty - will be lazy-loaded
             updatedAt: conv.updatedAt,
+            _hasData: true, // Marker to indicate data exists in IndexedDB
           };
         }
 
-        console.log(`[ChatDB] Loaded ${conversations.length} conversations`);
+        console.log(`[ChatDB] Loaded metadata for ${conversations.length} conversations`);
 
         // Reconstruct the full state expected by Zustand
         const state: PersistedState = {
@@ -221,25 +224,35 @@ export function createConversationStorage(): StateStorage {
           console.log(`[ChatDB] Deleted ${toDelete.length} conversations`);
         }
 
-        // Update/insert conversations using debounced writer
+        // Handle NEW conversations that don't exist in IndexedDB yet
+        // (created via createConversation in Zustand)
+        // Full message saves are handled by conversation-manager.ts directly
         for (const [id, conv] of Object.entries(conversations)) {
           const existing = await db.conversations.get(id);
 
-          // Only write if changed (compare updatedAt or if new)
-          if (!existing || existing.updatedAt !== conv.updatedAt) {
+          if (!existing) {
+            // New conversation - create it with current data
             const stored: StoredConversation = {
               id: conv.id,
               title: conv.title,
-              messages: conv.messages,
+              messages: conv.messages || [],
               checkpoints: conv.checkpoints || [],
               updatedAt: conv.updatedAt,
-              createdAt: existing?.createdAt || conv.updatedAt,
-              searchText: buildSearchText(conv.title, conv.messages),
+              createdAt: conv.updatedAt,
+              searchText: buildSearchText(conv.title, conv.messages || []),
             };
-
-            // Use debounced writer for performance during streaming
-            writer.write(stored);
+            await db.conversations.put(stored);
+            console.log(`[ChatDB] Created new conversation: ${id}`);
+          } else if (existing.title !== conv.title && id !== settings.activeConversationId) {
+            // Title changed - update just the title
+            // Skip for active conversation as useConversationSaver handles it (debounced)
+            await db.conversations.update(id, {
+              title: conv.title,
+              updatedAt: conv.updatedAt,
+            });
           }
+          // Note: Message updates are handled by conversation-manager.ts directly
+          // This avoids the JSON serialization bottleneck
         }
       } catch (e) {
         console.error('[ChatDB] Failed to save state:', e);
@@ -413,7 +426,15 @@ export async function importData(data: {
 }
 
 /**
- * Clear all data
+ * Clear all conversation data (keeps settings)
+ */
+export async function clearConversationData(): Promise<void> {
+  await db.conversations.clear();
+  console.log('[ChatDB] Conversation history cleared');
+}
+
+/**
+ * Clear all data (including settings)
  */
 export async function clearAllData(): Promise<void> {
   await db.conversations.clear();

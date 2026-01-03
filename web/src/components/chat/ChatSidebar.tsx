@@ -7,8 +7,13 @@ import { searchConversations } from '@/lib/conversation-storage';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Plus, Search, Trash2, MessageSquare, X, Loader2 } from 'lucide-react';
+import { Plus, Search, Trash2, MessageSquare, X, Loader2, MoreHorizontal, Settings, RulerIcon, LogOut } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from '@/components/ui/popover';
 import {
   Dialog,
   DialogContent,
@@ -23,9 +28,12 @@ interface ChatSidebarProps {
   isOpen?: boolean;
   onClose?: () => void;
   isMobile?: boolean;
+  onOpenSystemPrompt?: () => void;
+  systemPromptActive?: boolean;
+  onLogout?: () => void;
 }
 
-export function ChatSidebar({ className, isOpen = true, onClose, isMobile = false }: ChatSidebarProps) {
+export function ChatSidebar({ className, isOpen = true, onClose, isMobile = false, onOpenSystemPrompt, systemPromptActive = false, onLogout }: ChatSidebarProps) {
   const navigate = useNavigate();
 
   // Combined selector - reduces from 4 subscriptions to 1
@@ -40,6 +48,7 @@ export function ChatSidebar({ className, isOpen = true, onClose, isMobile = fals
 
   const [search, setSearch] = useState('');
   const [deleteId, setDeleteId] = useState<string | null>(null);
+  const [openMenuId, setOpenMenuId] = useState<string | null>(null);
   const [searchResults, setSearchResults] = useState<typeof conversations[keyof typeof conversations][]>([]);
   const [isSearching, setIsSearching] = useState(false);
 
@@ -178,7 +187,7 @@ export function ChatSidebar({ className, isOpen = true, onClose, isMobile = fals
         )}
       </div>
 
-      <ScrollArea className="flex-1 h-px">
+      <ScrollArea className="flex-1 h-px" onScrollCapture={() => setOpenMenuId(null)}>
         <div className="p-2 space-y-1">
           {displayedChats.length === 0 ? (
             <div className="text-center text-xs text-muted-foreground py-8">
@@ -191,13 +200,13 @@ export function ChatSidebar({ className, isOpen = true, onClose, isMobile = fals
                   variant={activeId === chat.id ? "secondary" : "ghost"}
                   size="sm"
                   className={cn(
-                    "w-full justify-start text-left text-xs font-normal h-9 truncate pr-8 mb-0.5",
+                    "w-full justify-start text-left text-xs font-normal h-9 pr-9 mb-0.5 overflow-hidden",
                     activeId === chat.id && "bg-terminal-border text-terminal-text shadow-sm"
                   )}
                   onClick={() => handleSelectChat(chat.id)}
                 >
                   <MessageSquare className="mr-2 size-3.5 shrink-0 opacity-70" />
-                  <span className="truncate">{chat.title || "New Chat"}</span>
+                  <span className="w-0 flex-1 truncate">{chat.title || "New Chat"}</span>
                 </Button>
 
                 {/* Search Matches */}
@@ -224,25 +233,83 @@ export function ChatSidebar({ className, isOpen = true, onClose, isMobile = fals
                   </div>
                 )}
 
-                <Button
-                  variant="ghost"
-                  size="icon-sm"
-                  className={cn(
-                    "absolute top-1.5 right-1 w-6 h-6 transition-opacity hover:bg-terminal-red/10 hover:text-terminal-red",
-                    isMobile ? "opacity-100" : "opacity-0 group-hover:opacity-100"
-                  )}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setDeleteId(chat.id);
-                  }}
-                >
-                  <Trash2 className="size-3" />
-                </Button>
+                {/* 3-dot Menu */}
+                <Popover open={openMenuId === chat.id} onOpenChange={(open) => setOpenMenuId(open ? chat.id : null)}>
+                  <PopoverTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="icon-sm"
+                      className={cn(
+                        "absolute top-1.5 right-1 w-6 h-6 transition-opacity hover:bg-terminal-surface",
+                        isMobile ? "opacity-100" : "opacity-0 group-hover:opacity-100"
+                      )}
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <MoreHorizontal className="size-3.5" />
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent
+                    className="w-36 p-1 bg-terminal-surface border-terminal-border"
+                    align="end"
+                    side="right"
+                  >
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="w-full justify-start text-xs font-normal text-terminal-red hover:bg-terminal-red/10 hover:text-terminal-red"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setDeleteId(chat.id);
+                      }}
+                    >
+                      <Trash2 className="mr-2 size-3.5" />
+                      Delete
+                    </Button>
+                  </PopoverContent>
+                </Popover>
               </div>
             ))
           )}
         </div>
       </ScrollArea>
+
+      {/* Sidebar Footer - Settings */}
+      <div className="p-2 border-t border-terminal-border flex items-center gap-1">
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={onOpenSystemPrompt}
+          title="System Prompt"
+          className={cn(
+            "flex-1 justify-start text-xs font-normal",
+            systemPromptActive ? "text-terminal-green" : "text-terminal-muted hover:text-terminal-text"
+          )}
+        >
+          <RulerIcon className="mr-2 size-3.5" />
+          Rules
+        </Button>
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => navigate({ to: '/user/settings' })}
+          title="User Settings"
+          className="flex-1 justify-start text-xs font-normal text-terminal-muted hover:text-terminal-text"
+        >
+          <Settings className="mr-2 size-3.5" />
+          Settings
+        </Button>
+        {onLogout && (
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={onLogout}
+            title="Logout"
+            className="flex-none px-2 justify-center text-xs font-normal text-terminal-muted hover:text-terminal-red"
+          >
+            <LogOut className="size-3.5" />
+          </Button>
+        )}
+      </div>
 
       <Dialog open={!!deleteId} onOpenChange={(open) => !open && setDeleteId(null)}>
         <DialogContent>

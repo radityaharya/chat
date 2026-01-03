@@ -38,6 +38,7 @@ type Database interface {
 	GetAllHistory(userID int64) ([]ConversationHistory, error)
 	GetHistoryByID(userID int64, conversationID string) (*ConversationHistory, error)
 	DeleteHistory(userID int64, conversationID string) error
+	DeleteAllHistory(userID int64) error
 
 	// Config operations
 	GetUserConfig(userID int64) (*UserConfig, error)
@@ -152,6 +153,7 @@ func (d *PostgresDB) initSchema() error {
 		user_id BIGINT NOT NULL,
 		conversation_id TEXT NOT NULL,
 		version BIGINT NOT NULL DEFAULT 1,
+		hash TEXT NOT NULL DEFAULT '',
 		title TEXT NOT NULL,
 		data JSONB NOT NULL,
 		updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -335,17 +337,18 @@ func (d *PostgresDB) UpdateAPIKeyLastUsed(id int64) error {
 func (d *PostgresDB) SaveHistory(userID int64, history *ConversationHistory) error {
 	// Upsert: insert or update if exists
 	err := d.db.QueryRow(`
-		INSERT INTO conversation_histories (user_id, conversation_id, version, title, data, updated_at)
-		VALUES ($1, $2, $3, $4, $5, NOW())
+		INSERT INTO conversation_histories (user_id, conversation_id, version, hash, title, data, updated_at)
+		VALUES ($1, $2, $3, $4, $5, $6, NOW())
 		ON CONFLICT (user_id, conversation_id)
 		DO UPDATE SET
 			version = conversation_histories.version + 1,
+			hash = EXCLUDED.hash,
 			title = EXCLUDED.title,
 			data = EXCLUDED.data,
 			updated_at = NOW()
-		RETURNING id, version, created_at, updated_at
-	`, userID, history.ConversationID, history.Version, history.Title, history.Data).Scan(
-		&history.ID, &history.Version, &history.CreatedAt, &history.UpdatedAt)
+		RETURNING id, version, hash, created_at, updated_at
+	`, userID, history.ConversationID, history.Version, history.Hash, history.Title, history.Data).Scan(
+		&history.ID, &history.Version, &history.Hash, &history.CreatedAt, &history.UpdatedAt)
 
 	if err != nil {
 		return fmt.Errorf("failed to save history: %w", err)
@@ -357,7 +360,7 @@ func (d *PostgresDB) SaveHistory(userID int64, history *ConversationHistory) err
 
 func (d *PostgresDB) GetAllHistory(userID int64) ([]ConversationHistory, error) {
 	rows, err := d.db.Query(`
-		SELECT id, user_id, conversation_id, version, title, data, updated_at, created_at
+		SELECT id, user_id, conversation_id, version, hash, title, data, updated_at, created_at
 		FROM conversation_histories
 		WHERE user_id = $1
 		ORDER BY updated_at DESC
@@ -370,7 +373,7 @@ func (d *PostgresDB) GetAllHistory(userID int64) ([]ConversationHistory, error) 
 	var histories []ConversationHistory
 	for rows.Next() {
 		var h ConversationHistory
-		if err := rows.Scan(&h.ID, &h.UserID, &h.ConversationID, &h.Version, &h.Title, &h.Data, &h.UpdatedAt, &h.CreatedAt); err != nil {
+		if err := rows.Scan(&h.ID, &h.UserID, &h.ConversationID, &h.Version, &h.Hash, &h.Title, &h.Data, &h.UpdatedAt, &h.CreatedAt); err != nil {
 			return nil, fmt.Errorf("failed to scan history: %w", err)
 		}
 		histories = append(histories, h)
@@ -390,10 +393,10 @@ func (d *PostgresDB) GetAllHistory(userID int64) ([]ConversationHistory, error) 
 func (d *PostgresDB) GetHistoryByID(userID int64, conversationID string) (*ConversationHistory, error) {
 	var h ConversationHistory
 	err := d.db.QueryRow(`
-		SELECT id, user_id, conversation_id, version, title, data, updated_at, created_at
+		SELECT id, user_id, conversation_id, version, hash, title, data, updated_at, created_at
 		FROM conversation_histories
 		WHERE user_id = $1 AND conversation_id = $2
-	`, userID, conversationID).Scan(&h.ID, &h.UserID, &h.ConversationID, &h.Version, &h.Title, &h.Data, &h.UpdatedAt, &h.CreatedAt)
+	`, userID, conversationID).Scan(&h.ID, &h.UserID, &h.ConversationID, &h.Version, &h.Hash, &h.Title, &h.Data, &h.UpdatedAt, &h.CreatedAt)
 
 	if err == sql.ErrNoRows {
 		return nil, nil
@@ -420,6 +423,14 @@ func (d *PostgresDB) DeleteHistory(userID int64, conversationID string) error {
 		return fmt.Errorf("conversation not found")
 	}
 
+	return nil
+}
+
+func (d *PostgresDB) DeleteAllHistory(userID int64) error {
+	_, err := d.db.Exec("DELETE FROM conversation_histories WHERE user_id = $1", userID)
+	if err != nil {
+		return fmt.Errorf("failed to delete all history: %w", err)
+	}
 	return nil
 }
 

@@ -147,9 +147,16 @@ func (am *AuthManager) DeleteHistoryItem(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	if err := am.db.DeleteHistory(session.UserID, req.ConversationID); err != nil {
-		http.Error(w, "failed to delete history", http.StatusInternalServerError)
-		return
+	if req.ConversationID == "all" {
+		if err := am.db.DeleteAllHistory(session.UserID); err != nil {
+			http.Error(w, "failed to delete all history", http.StatusInternalServerError)
+			return
+		}
+	} else {
+		if err := am.db.DeleteHistory(session.UserID, req.ConversationID); err != nil {
+			http.Error(w, "failed to delete history", http.StatusInternalServerError)
+			return
+		}
 	}
 
 	w.Header().Set("Content-Type", "application/json")

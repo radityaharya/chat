@@ -1,8 +1,13 @@
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useGetSettings, useSaveSettings, type BackendConfig, type Settings } from '@/hooks/useSettings';
-import { useCheckAuth, useAPIKeys, useCreateAPIKey, useDeleteAPIKey, useLogout } from '@/hooks/useAuth';
-import { Copy, Check, Trash2, Key } from 'lucide-react';
+import { Trash2, Save, ArrowLeft, Server, Command, Shield, Loader2 } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { cn } from '@/lib/utils';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Switch } from '@/components/ui/switch';
+import { Label } from '@/components/ui/label';
 
 export const Route = createFileRoute('/settings')({
   component: SettingsPage,
@@ -15,11 +20,14 @@ function SettingsPage() {
 
   const [editedSettings, setEditedSettings] = useState<Settings | null>(null);
   const [showSuccess, setShowSuccess] = useState(false);
+  const [activeTab, setActiveTab] = useState<'general' | 'backends' | 'aliases'>('backends');
 
   // Initialize edited settings when data loads
-  if (settings && !editedSettings) {
-    setEditedSettings(JSON.parse(JSON.stringify(settings)));
-  }
+  useEffect(() => {
+    if (settings && !editedSettings) {
+      setEditedSettings(JSON.parse(JSON.stringify(settings)));
+    }
+  }, [settings]);
 
   const handleSave = async () => {
     if (!editedSettings) return;
@@ -27,7 +35,7 @@ function SettingsPage() {
     try {
       await saveSettings.mutateAsync(editedSettings);
       setShowSuccess(true);
-      setTimeout(() => setShowSuccess(false), 5000);
+      setTimeout(() => setShowSuccess(false), 3000);
     } catch (err) {
       console.error('Failed to save settings:', err);
     }
@@ -94,209 +102,280 @@ function SettingsPage() {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-terminal-bg text-terminal-text font-mono flex items-center justify-center">
-        <div className="text-terminal-muted">Loading settings...</div>
+      <div className="min-h-screen bg-terminal-bg flex items-center justify-center">
+        <Loader2 className="w-8 h-8 text-terminal-cyan animate-spin" />
       </div>
     );
   }
 
   if (error || !editedSettings) {
     return (
-      <div className="min-h-screen bg-terminal-bg text-terminal-text font-mono flex items-center justify-center">
+      <div className="min-h-screen bg-terminal-bg flex items-center justify-center">
         <div className="text-terminal-red">Failed to load settings</div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-terminal-bg text-terminal-text font-mono">
-      <div className="max-w-6xl mx-auto p-4 sm:p-6 lg:p-8">
+    <div className="min-h-screen bg-terminal-bg text-terminal-text font-sans selection:bg-terminal-cyan/30">
+      <div className="max-w-5xl mx-auto p-4 sm:p-6 lg:p-8">
+
         {/* Header */}
-        <div className="flex items-center justify-between mb-6">
-          <div>
-            <h1 className="text-2xl sm:text-3xl font-bold">Settings</h1>
-            <p className="text-sm text-terminal-muted mt-1">Manage your Chat configuration</p>
-          </div>
-          <button
-            onClick={() => navigate({ to: '/' })}
-            className="px-4 py-2 text-sm font-medium border border-terminal-border rounded hover:border-terminal-muted transition"
-          >
-            ← Back to Chat
-          </button>
-        </div>
-
-        {/* Success Message */}
-        {showSuccess && (
-          <div className="mb-6 p-4 bg-terminal-surface border border-terminal-green rounded">
-            <p className="text-terminal-green font-medium">
-              ✓ Settings saved successfully! Please restart the server for changes to take effect.
-            </p>
-          </div>
-        )}
-
-        {/* Port Configuration */}
-        <div className="bg-terminal-surface rounded border border-terminal-border p-6 mb-6">
-          <h2 className="text-lg font-semibold mb-4">Server Configuration</h2>
-          <div>
-            <label className="block text-sm font-medium text-terminal-muted mb-2">
-              Listening Port
-            </label>
-            <input
-              type="number"
-              value={editedSettings.listening_port}
-              onChange={(e) => setEditedSettings({ ...editedSettings, listening_port: parseInt(e.target.value) })}
-              className="w-full sm:w-48 px-3 py-2 border border-terminal-border rounded bg-terminal-bg text-terminal-text"
-            />
-          </div>
-        </div>
-
-        {/* Backends */}
-        <div className="bg-terminal-surface rounded border border-terminal-border p-6 mb-6">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-lg font-semibold">Backends</h2>
-            <button
-              onClick={addBackend}
-              className="px-4 py-2 bg-terminal-cyan hover:bg-terminal-cyan/80 text-terminal-bg text-sm font-medium rounded transition"
+        <motion.div
+          initial={{ opacity: 0, y: -20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="flex items-center justify-between mb-8"
+        >
+          <div className="flex items-center gap-4">
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              onClick={() => navigate({ to: '/' })}
+              className="text-terminal-muted hover:text-terminal-text hover:bg-terminal-surface"
             >
-              + Add Backend
-            </button>
+              <ArrowLeft className="size-5" />
+            </Button>
+            <div>
+              <h1 className="text-3xl font-bold tracking-tight bg-linear-to-r from-terminal-cyan to-terminal-blue bg-clip-text text-transparent">
+                Settings
+              </h1>
+              <p className="text-terminal-muted text-sm mt-1">
+                Manage your LLM Router configuration
+              </p>
+            </div>
           </div>
 
-          <div className="space-y-4">
-            {editedSettings.backends.map((backend, index) => (
-              <div key={index} className="border border-terminal-border rounded p-4">
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium text-terminal-muted mb-1">Name</label>
-                    <input
-                      type="text"
-                      value={backend.name}
-                      onChange={(e) => updateBackend(index, 'name', e.target.value)}
-                      className="w-full px-3 py-2 border border-terminal-border rounded bg-terminal-bg text-terminal-text text-sm"
-                      placeholder="e.g., openai"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-terminal-muted mb-1">Prefix</label>
-                    <input
-                      type="text"
-                      value={backend.prefix}
-                      onChange={(e) => updateBackend(index, 'prefix', e.target.value)}
-                      className="w-full px-3 py-2 border border-terminal-border rounded bg-terminal-bg text-terminal-text text-sm"
-                      placeholder="e.g., openai/"
-                    />
-                  </div>
-                  <div className="sm:col-span-2">
-                    <label className="block text-sm font-medium text-terminal-muted mb-1">Base URL</label>
-                    <input
-                      type="text"
-                      value={backend.base_url}
-                      onChange={(e) => updateBackend(index, 'base_url', e.target.value)}
-                      className="w-full px-3 py-2 border border-terminal-border rounded bg-terminal-bg text-terminal-text text-sm"
-                      placeholder="https://api.openai.com"
-                    />
-                  </div>
-                  <div className="sm:col-span-2">
-                    <label className="block text-sm font-medium text-terminal-muted mb-1">API Key (optional)</label>
-                    <input
-                      type="password"
-                      value={backend.api_key || ''}
-                      onChange={(e) => updateBackend(index, 'api_key', e.target.value)}
-                      className="w-full px-3 py-2 border border-terminal-border rounded bg-terminal-bg text-terminal-text text-sm"
-                      placeholder="Leave empty to use environment variable"
-                    />
-                  </div>
-                  <div className="flex items-center gap-4">
-                    <label className="flex items-center">
-                      <input
-                        type="checkbox"
-                        checked={backend.require_api_key || false}
-                        onChange={(e) => updateBackend(index, 'require_api_key', e.target.checked)}
-                        className="mr-2"
-                      />
-                      <span className="text-sm text-terminal-muted">Require API Key</span>
-                    </label>
-                    <label className="flex items-center">
-                      <input
-                        type="checkbox"
-                        checked={backend.default || false}
-                        onChange={(e) => updateBackend(index, 'default', e.target.checked)}
-                        className="mr-2"
-                      />
-                      <span className="text-sm text-terminal-muted">Default</span>
-                    </label>
-                  </div>
-                  <div className="flex justify-end">
-                    <button
-                      onClick={() => deleteBackend(index)}
-                      className="px-3 py-1 text-sm text-terminal-red hover:text-terminal-red/80 transition"
+          <div className="flex items-center gap-3">
+            <Button
+              onClick={handleSave}
+              disabled={saveSettings.isPending}
+              className="bg-terminal-cyan hover:bg-terminal-cyan/90 text-terminal-bg font-medium shadow-lg shadow-terminal-cyan/20 transition-all active:scale-95"
+            >
+              {saveSettings.isPending ? (
+                <>
+                  <Loader2 className="mr-2 size-4 animate-spin" />
+                  Saving...
+                </>
+              ) : (
+                <>
+                  <Save className="mr-2 size-4" />
+                  Save Changes
+                </>
+              )}
+            </Button>
+          </div>
+        </motion.div>
+
+        {/* Navigation Tabs */}
+        <div className="flex gap-1 mb-8 bg-terminal-surface/50 p-1 rounded-lg w-fit backdrop-blur-sm border border-terminal-border/50">
+          {[
+            { id: 'backends', label: 'Backends', icon: Server },
+            { id: 'aliases', label: 'Aliases', icon: Command },
+            { id: 'general', label: 'General', icon: Shield },
+          ].map((tab) => (
+            <button
+              key={tab.id}
+              onClick={() => setActiveTab(tab.id as any)}
+              className={cn(
+                "flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-all",
+                activeTab === tab.id
+                  ? "bg-terminal-bg text-terminal-cyan shadow-sm border border-terminal-border/50"
+                  : "text-terminal-muted hover:text-terminal-text hover:bg-terminal-surface"
+              )}
+            >
+              <tab.icon className="size-4" />
+              {tab.label}
+            </button>
+          ))}
+        </div>
+
+        <AnimatePresence mode="wait">
+          <motion.div
+            key={activeTab}
+            initial={{ opacity: 0, x: 10 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: -10 }}
+            transition={{ duration: 0.2 }}
+            className="space-y-6"
+          >
+            {/* BACKENDS TAB */}
+            {activeTab === 'backends' && (
+              <div className="space-y-6">
+                {editedSettings.backends.map((backend, index) => (
+                  <motion.div
+                    layout
+                    initial={{ opacity: 0, scale: 0.95 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    key={index}
+                    className="group bg-terminal-surface/30 backdrop-blur border border-terminal-border rounded-xl p-6 hover:border-terminal-muted/50 transition-colors"
+                  >
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                      <div className="space-y-2">
+                        <Label className="text-xs text-terminal-muted uppercase tracking-wider">Provider Name</Label>
+                        <Input
+                          value={backend.name}
+                          onChange={(e) => updateBackend(index, 'name', e.target.value)}
+                          placeholder="e.g. openai"
+                          className="bg-terminal-bg/50 border-terminal-border focus:border-terminal-cyan transition-colors"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label className="text-xs text-terminal-muted uppercase tracking-wider">Model Prefix</Label>
+                        <Input
+                          value={backend.prefix}
+                          onChange={(e) => updateBackend(index, 'prefix', e.target.value)}
+                          placeholder="e.g. openai/"
+                          className="bg-terminal-bg/50 border-terminal-border focus:border-terminal-cyan transition-colors"
+                        />
+                      </div>
+                      <div className="md:col-span-2 space-y-2">
+                        <Label className="text-xs text-terminal-muted uppercase tracking-wider">Base URL</Label>
+                        <Input
+                          value={backend.base_url}
+                          onChange={(e) => updateBackend(index, 'base_url', e.target.value)}
+                          placeholder="https://api.openai.com"
+                          className="bg-terminal-bg/50 border-terminal-border focus:border-terminal-cyan transition-colors"
+                        />
+                      </div>
+                      <div className="md:col-span-2 space-y-2">
+                        <Label className="text-xs text-terminal-muted uppercase tracking-wider">API Key (Optional)</Label>
+                        <Input
+                          type="password"
+                          value={backend.api_key || ''}
+                          onChange={(e) => updateBackend(index, 'api_key', e.target.value)}
+                          placeholder="Leave empty to use env vars"
+                          className="bg-terminal-bg/50 border-terminal-border focus:border-terminal-cyan transition-colors"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="flex items-center justify-between mt-6 pt-6 border-t border-terminal-border/50">
+                      <div className="flex items-center gap-6">
+                        <div className="flex items-center gap-2">
+                          <Switch
+                            checked={backend.require_api_key}
+                            onCheckedChange={(c) => updateBackend(index, 'require_api_key', c)}
+                          />
+                          <span className="text-sm text-terminal-muted">Require Client Key</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <Switch
+                            checked={backend.default}
+                            onCheckedChange={(c) => updateBackend(index, 'default', c)}
+                          />
+                          <span className="text-sm text-terminal-muted">Default Provider</span>
+                        </div>
+                      </div>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => deleteBackend(index)}
+                        className="text-terminal-red hover:bg-terminal-red/10 hover:text-terminal-red"
+                      >
+                        <Trash2 className="size-4 mr-2" />
+                        Remove
+                      </Button>
+                    </div>
+                  </motion.div>
+                ))}
+
+                <Button
+                  onClick={addBackend}
+                  className="w-full py-6 border-2 border-dashed border-terminal-border bg-transparent text-terminal-muted hover:border-terminal-cyan hover:text-terminal-cyan transition-all"
+                >
+                  + Add New Backend Provider
+                </Button>
+              </div>
+            )}
+
+            {/* ALIASES TAB */}
+            {activeTab === 'aliases' && (
+              <div className="bg-terminal-surface/30 backdrop-blur border border-terminal-border rounded-xl p-6">
+                <div className="space-y-4">
+                  {Object.entries(editedSettings.aliases || {}).map(([key, value], idx) => (
+                    <motion.div
+                      key={idx}
+                      layout
+                      className="flex gap-4 items-center group"
                     >
-                      Delete
-                    </button>
+                      <div className="flex-1">
+                        <Input
+                          value={key}
+                          onChange={(e) => updateAlias(key, e.target.value, value)}
+                          placeholder="Alias (e.g. gpt-4)"
+                          className="bg-terminal-bg/50 border-terminal-border focus:border-terminal-cyan"
+                        />
+                      </div>
+                      <span className="text-terminal-muted">→</span>
+                      <div className="flex-1">
+                        <Input
+                          value={value}
+                          onChange={(e) => updateAlias(key, key, e.target.value)}
+                          placeholder="Target (e.g. openai/gpt-4-turbo)"
+                          className="bg-terminal-bg/50 border-terminal-border focus:border-terminal-cyan"
+                        />
+                      </div>
+                      <Button
+                        variant="ghost"
+                        size="icon-sm"
+                        onClick={() => deleteAlias(key)}
+                        className="opacity-0 group-hover:opacity-100 transition-opacity text-terminal-muted hover:text-terminal-red"
+                      >
+                        <Trash2 className="size-4" />
+                      </Button>
+                    </motion.div>
+                  ))}
+                  <Button
+                    variant="outline"
+                    onClick={addAlias}
+                    className="mt-4 border-terminal-border hover:border-terminal-cyan hover:text-terminal-cyan"
+                  >
+                    + Add Alias
+                  </Button>
+                </div>
+              </div>
+            )}
+
+            {/* GENERAL TAB */}
+            {activeTab === 'general' && (
+              <div className="space-y-6">
+                {/* Server Config */}
+                <div className="bg-terminal-surface/30 backdrop-blur border border-terminal-border rounded-xl p-6">
+                  <h3 className="text-lg font-medium mb-4 flex items-center gap-2">
+                    <Server className="size-5 text-terminal-cyan" />
+                    Server Configuration
+                  </h3>
+
+                  <div className="max-w-xs">
+                    <Label className="text-xs text-terminal-muted uppercase tracking-wider mb-2 block">Listening Port</Label>
+                    <Input
+                      type="number"
+                      value={editedSettings.listening_port}
+                      onChange={(e) => setEditedSettings({ ...editedSettings, listening_port: parseInt(e.target.value) })}
+                      className="bg-terminal-bg/50 border-terminal-border focus:border-terminal-cyan"
+                    />
                   </div>
                 </div>
               </div>
-            ))}
-          </div>
-        </div>
+            )}
 
-        {/* Aliases */}
-        <div className="bg-terminal-surface rounded border border-terminal-border p-6 mb-6">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-lg font-semibold">Model Aliases</h2>
-            <button
-              onClick={addAlias}
-              className="px-4 py-2 bg-terminal-cyan hover:bg-terminal-cyan/80 text-terminal-bg text-sm font-medium rounded transition"
+          </motion.div>
+        </AnimatePresence>
+
+        {/* Success Toast */}
+        <AnimatePresence>
+          {showSuccess && (
+            <motion.div
+              initial={{ opacity: 0, y: 50 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 50 }}
+              className="fixed bottom-8 right-8 bg-terminal-green text-terminal-bg px-6 py-3 rounded-lg shadow-lg font-medium flex items-center gap-2"
             >
-              + Add Alias
-            </button>
-          </div>
-
-          <div className="space-y-3">
-            {Object.entries(editedSettings.aliases || {}).map(([key, value]) => (
-              <div key={key} className="flex gap-2">
-                <input
-                  type="text"
-                  value={key}
-                  onChange={(e) => updateAlias(key, e.target.value, value)}
-                  className="flex-1 px-3 py-2 border border-terminal-border rounded bg-terminal-bg text-terminal-text text-sm"
-                  placeholder="Alias (e.g., gpt-4)"
-                />
-                <span className="flex items-center text-terminal-muted">→</span>
-                <input
-                  type="text"
-                  value={value}
-                  onChange={(e) => updateAlias(key, key, e.target.value)}
-                  className="flex-1 px-3 py-2 border border-terminal-border rounded bg-terminal-bg text-terminal-text text-sm"
-                  placeholder="Target (e.g., openai/gpt-4-turbo)"
-                />
-                <button
-                  onClick={() => deleteAlias(key)}
-                  className="px-3 py-2 text-terminal-red hover:text-terminal-red/80 transition"
-                >
-                  ×
-                </button>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        {/* Save Button */}
-        <div className="flex justify-end gap-3">
-          <button
-            onClick={() => navigate({ to: '/' })}
-            className="px-6 py-2 border border-terminal-border rounded hover:border-terminal-muted transition"
-          >
-            Cancel
-          </button>
-          <button
-            onClick={handleSave}
-            disabled={saveSettings.isPending}
-            className="px-6 py-2 bg-terminal-cyan hover:bg-terminal-cyan/80 disabled:bg-terminal-muted text-terminal-bg rounded font-medium transition"
-          >
-            {saveSettings.isPending ? 'Saving...' : 'Save Settings'}
-          </button>
-        </div>
+              <Shield className="size-5" />
+              Action successful!
+            </motion.div>
+          )}
+        </AnimatePresence>
       </div>
     </div>
   );

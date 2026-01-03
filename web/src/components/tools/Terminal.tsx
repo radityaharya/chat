@@ -176,8 +176,8 @@ export function Terminal({ className }: { className?: string }) {
             {history.map((item, i) => (
               <div key={i} className="group">
                 <div className="flex items-center text-muted-foreground/80 mb-1">
-                  <span className="text-green-500 font-bold mr-2">➜</span>
-                  <span className="opacity-60 mr-2">{item.cwd}</span>
+                  {/* <span className="text-green-500 font-bold mr-2">➜</span> */}
+                  <span className="opacity-60 mr-2">{displayCwd}</span>
                   <span className="text-foreground font-bold">{item.command}</span>
                 </div>
                 {item.output && (
@@ -197,7 +197,7 @@ export function Terminal({ className }: { className?: string }) {
 
           <form onSubmit={handleSubmit} className="p-3 bg-white/2 border-t border-white/5 flex gap-2 shrink-0">
             <div className="flex-1 relative flex items-center">
-              <span className="text-green-500 font-bold mr-2 text-sm">➜</span>
+              {/* <span className="text-green-500 font-bold mr-2 text-sm">➜</span> */}
               <input
                 ref={inputRef}
                 className="flex-1 bg-transparent border-none p-0 focus:outline-none focus:ring-0 placeholder:text-muted-foreground/30 text-foreground font-medium"

@@ -212,7 +212,7 @@ export function ChatInput({
       )}
       <PromptInput
         onSubmit={handleSubmit}
-        className="rounded-b-none border-b-0"
+        className="rounded-none border-b-0"
         globalDrop
         multiple
       >
@@ -232,8 +232,8 @@ export function ChatInput({
         <PromptInputFooter className="px-2 sm:px-3">
           <PromptInputTools>
             <PromptInputActionMenu>
-              <PromptInputActionMenuTrigger className="h-7 sm:h-8" />
-              <PromptInputActionMenuContent>
+              <PromptInputActionMenuTrigger className="h-7 sm:h-8 rounded-none border border-transparent hover:border-terminal-border hover:bg-terminal-surface/50" />
+              <PromptInputActionMenuContent className="rounded-none border-terminal-border">
                 <PromptInputActionAddAttachments />
               </PromptInputActionMenuContent>
             </PromptInputActionMenu>
@@ -242,8 +242,8 @@ export function ChatInput({
               <PopoverTrigger asChild>
                 <PromptInputButton
                   className={cn(
-                    "h-7 sm:h-8 transition-colors",
-                    enabledTools.length > 0 ? "text-primary hover:bg-primary/10 px-2" : "text-muted-foreground hover:bg-muted"
+                    "h-7 sm:h-8 transition-colors rounded-none border border-transparent hover:border-terminal-border hover:bg-terminal-surface/50",
+                    enabledTools.length > 0 ? "text-terminal-green hover:bg-terminal-green/5 hover:border-terminal-green/30 px-2" : "text-terminal-muted"
                   )}
                   size={enabledTools.length > 0 ? undefined : "icon-sm"}
                   variant="ghost"
@@ -251,21 +251,21 @@ export function ChatInput({
                 >
                   <Wrench className="size-4" />
                   {enabledTools.length > 0 && (
-                    <span className="ml-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[9px] font-bold text-primary-foreground">
+                    <span className="ml-1.5 flex h-4 min-w-4 items-center justify-center rounded-none bg-terminal-green px-1 text-[9px] font-bold text-terminal-bg font-mono">
                       {enabledTools.length}
                     </span>
                   )}
                 </PromptInputButton>
               </PopoverTrigger>
-              <PopoverContent className="w-[300px] p-0" align="start">
-                <PromptInputCommand>
-                  <PromptInputCommandInput placeholder="Search tools..." />
-                  <PromptInputCommandList>
-                    <PromptInputCommandEmpty className="p-2 text-sm text-center text-muted-foreground">
+              <PopoverContent className="w-[300px] p-0 rounded-none border-terminal-border bg-terminal-surface" align="start">
+                <PromptInputCommand className="rounded-none">
+                  <PromptInputCommandInput placeholder="Search tools..." className="rounded-none border-b border-terminal-border font-mono" />
+                  <PromptInputCommandList className="rounded-none">
+                    <PromptInputCommandEmpty className="p-2 text-sm text-center text-terminal-muted font-mono">
                       No tools found.
                     </PromptInputCommandEmpty>
 
-                    <PromptInputCommandGroup heading="Available Tools">
+                    <PromptInputCommandGroup heading="Available Tools" className="font-mono text-xs">
                       {Object.values(tools).map((tool) => {
                         const ToolIcon = tool.icon || Wrench;
                         return (
@@ -273,29 +273,29 @@ export function ChatInput({
                             key={tool.name}
                             onSelect={() => toggleTool(tool.name)}
                             value={tool.name}
-                            className="flex items-center justify-between"
+                            className="flex items-center justify-between rounded-none aria-selected:bg-terminal-bg/50"
                           >
                             <div className="flex items-center gap-2 min-w-0">
                               <ToolIcon className="size-4 shrink-0 opacity-50" />
                               <div className="flex flex-col min-w-0">
                                 <span className="font-medium truncate">{tool.name}</span>
-                                <span className="text-xs text-muted-foreground line-clamp-1">{tool.description}</span>
+                                <span className="text-xs text-terminal-muted line-clamp-1">{tool.description}</span>
                               </div>
                             </div>
                             {enabledTools.includes(tool.name) && (
-                              <CheckIcon className="ml-2 size-4 text-primary shrink-0" />
+                              <CheckIcon className="ml-2 size-4 text-terminal-green shrink-0" />
                             )}
                           </PromptInputCommandItem>
                         );
                       })}
                     </PromptInputCommandGroup>
                   </PromptInputCommandList>
-                  <div className="p-1 border-t">
+                  <div className="p-1 border-t border-terminal-border">
                     <div className="flex w-full gap-1">
                       <Button
                         variant="ghost"
                         size="sm"
-                        className="flex-1 h-8 text-[10px]"
+                        className="flex-1 h-8 text-[10px] rounded-none hover:bg-terminal-bg/50 font-mono"
                         onClick={() => setEnabledTools(Object.keys(tools))}
                       >
                         Enable All
@@ -303,7 +303,7 @@ export function ChatInput({
                       <Button
                         variant="ghost"
                         size="sm"
-                        className="flex-1 h-8 text-[10px]"
+                        className="flex-1 h-8 text-[10px] rounded-none hover:bg-terminal-bg/50 font-mono"
                         onClick={() => setEnabledTools([])}
                       >
                         Disable All
@@ -319,7 +319,7 @@ export function ChatInput({
               open={modelSelectorOpen}
             >
               <ModelSelectorTrigger asChild>
-                <PromptInputButton disabled={disabled} className="text-xs sm:text-sm h-7 sm:h-8 max-w-[140px] sm:max-w-none">
+                <PromptInputButton disabled={disabled} className="text-xs sm:text-sm h-7 sm:h-8 max-w-[140px] sm:max-w-none rounded-none border border-transparent hover:border-terminal-border hover:bg-terminal-surface/50 font-mono">
                   {selectedModelData?.chefSlug && (
                     <ModelSelectorLogo provider={selectedModelData.chefSlug} className="shrink-0" />
                   )}
@@ -329,12 +329,12 @@ export function ChatInput({
                 </PromptInputButton>
               </ModelSelectorTrigger>
 
-              <ModelSelectorContent className="w-[90vw] sm:w-auto">
-                <ModelSelectorInput placeholder="Search models..." />
-                <ModelSelectorList>
-                  <ModelSelectorEmpty>No models found.</ModelSelectorEmpty>
+              <ModelSelectorContent className="w-[90vw] sm:w-auto rounded-none border-terminal-border bg-terminal-surface">
+                <ModelSelectorInput placeholder="Search models..." className="rounded-none border-b border-terminal-border font-mono" />
+                <ModelSelectorList className="rounded-none">
+                  <ModelSelectorEmpty className="font-mono text-terminal-muted">No models found.</ModelSelectorEmpty>
                   {Object.entries(groupedModels).map(([chef, chefModels]) => (
-                    <ModelSelectorGroup key={chef} heading={chef}>
+                    <ModelSelectorGroup key={chef} heading={chef} className="font-mono text-xs">
                       {chefModels.map((m) => {
                         const provider = getModelProvider(m.id);
                         const slug = getProviderSlug(provider);
@@ -346,11 +346,12 @@ export function ChatInput({
                               onSelectModel(m.id);
                               setModelSelectorOpen(false);
                             }}
+                            className="rounded-none aria-selected:bg-terminal-bg/50"
                           >
                             <ModelSelectorLogo provider={slug} />
                             <ModelSelectorName className="text-xs sm:text-sm truncate">{m.id}</ModelSelectorName>
                             {selectedModel === m.id ? (
-                              <CheckIcon className="ml-auto size-4 shrink-0" />
+                              <CheckIcon className="ml-auto size-4 shrink-0 text-terminal-green" />
                             ) : (
                               <div className="ml-auto size-4 shrink-0" />
                             )}
@@ -365,7 +366,12 @@ export function ChatInput({
           </PromptInputTools>
 
           <div className="flex items-center gap-2">
-            <PromptInputSubmit className="h-7! sm:h-8!" disabled={disabled} status={status} onStop={onStop} />
+            <PromptInputSubmit 
+              className="h-7! sm:h-8! rounded-none border border-terminal-border hover:bg-terminal-green hover:text-terminal-bg hover:border-terminal-green transition-colors disabled:opacity-50" 
+              disabled={disabled} 
+              status={status} 
+              onStop={onStop} 
+            />
           </div>
         </PromptInputFooter>
       </PromptInput>

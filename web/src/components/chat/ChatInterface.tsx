@@ -5,7 +5,7 @@ import {
   useChatInterfaceActions,
 } from '@/store';
 import { useModels, useSendMessage } from '@/hooks/useChat';
-import { useUpdateConfig } from '@/hooks/useConfig';
+import { useConfig, useUpdateConfig } from '@/hooks/useConfig';
 import { useCheckAuth } from '@/hooks/useAuth';
 import { useHistory } from '@/hooks/useHistory';
 import { useViewportHeight } from '@/hooks/useViewportHeight';
@@ -26,7 +26,7 @@ import {
   CheckpointTrigger,
 } from '@/components/ai-elements/checkpoint';
 import { ArtifactsPanel } from '@/components/chat/ArtifactsPanel';
-import { MessageSquare, Settings, LogOut, PanelLeft, RulerIcon, Cloud, CloudOff, CodeIcon } from 'lucide-react';
+import { MessageSquare, PanelLeft, Cloud, CloudOff, CodeIcon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { nanoid } from 'nanoid';
 import {
@@ -42,14 +42,18 @@ import { Textarea } from '@/components/ui/textarea';
 
 import { useAutoSaveArtifacts } from '@/hooks/useAutoSaveArtifacts';
 import { useAutoCd } from '@/hooks/useAutoCd';
+import { useConversationManager } from '@/hooks/useActiveConversation';
 
 export function ChatInterface() {
-  useAutoSaveArtifacts(); // Auto-save artifacts
+  const { sendMessage, regenerate, isStreaming, stopStreaming } = useSendMessage();
+  useAutoSaveArtifacts(isStreaming); // Auto-save artifacts
   useAutoCd(); // Auto-cd to workspace
+  useConversationManager(); // Lazy-load conversation messages & save changes
   const navigate = useNavigate();
 
   // Combined state hook - reduces from 15+ subscriptions to 1
   const {
+    isHydrated,
     apiKey,
     systemPrompt,
     conversations,
@@ -76,9 +80,9 @@ export function ChatInterface() {
   } = useChatInterfaceActions();
 
   const { data: models, isLoading: _isLoadingModels } = useModels();
-  // const { data: config } = useConfig();
+  useConfig(); // Load user's saved default model from backend
   const { mutate: updateConfig } = useUpdateConfig();
-  const { sendMessage, regenerate, isStreaming, stopStreaming } = useSendMessage();
+  // useSendMessage moved up
   const { data: authStatus, isLoading: isCheckingAuth } = useCheckAuth();
   const { syncHistory, loadHistory, syncStatus } = useHistory();
 
@@ -89,7 +93,7 @@ export function ChatInterface() {
 
   // Mobile hooks
   useViewportHeight();
-  const { isMobile } = useMobileDetect();
+  const { isMobile, isDesktop } = useMobileDetect();
 
   const [queue, setQueue] = useState<QueueMessage[]>([]);
   const [sidebarOpen, setSidebarOpen] = useState(!isMobile);
@@ -296,6 +300,12 @@ export function ChatInterface() {
     }
   };
 
+  // Show loading skeleton while store is hydrating from IndexedDB
+  // This prevents the flash of empty content when navigating directly to a conversation
+  if (!isHydrated) {
+    return <ChatLoadingSkeleton />;
+  }
+
   if (!apiKey && !authStatus?.authenticated) {
     return <ChatLoadingSkeleton />;
   }
@@ -318,6 +328,9 @@ export function ChatInterface() {
         isOpen={sidebarOpen}
         onClose={handleCloseSidebar}
         isMobile={isMobile}
+        onOpenSystemPrompt={() => setSystemPromptOpen(true)}
+        systemPromptActive={!!systemPrompt}
+        onLogout={handleLogout}
       />
 
       <div className="flex-1 flex flex-col min-w-0">
@@ -334,16 +347,12 @@ export function ChatInterface() {
               >
                 <PanelLeft className="size-4" />
               </Button>
-              <h1 className="text-sm sm:text-lg font-bold truncate">
-                {activeId && conversations[activeId] ? conversations[activeId].title : 'Chat'}
-              </h1>
-            </div>
+              <TypewriterTitle title={activeId && conversations[activeId] ? conversations[activeId].title : 'Chat'} />
 
-            <div className="flex items-center gap-1 sm:gap-2 shrink-0">
               {/* Sync Status Indicator */}
               {authStatus?.authenticated && activeId && conversations[activeId] && (
                 <div
-                  className="flex items-center gap-1 text-xs text-terminal-muted"
+                  className="flex items-center gap-1 text-xs text-terminal-muted shrink-0 ml-1"
                   title={
                     syncStatus.syncing
                       ? 'Syncing...'
@@ -365,24 +374,9 @@ export function ChatInterface() {
                   )}
                 </div>
               )}
-              <Button
-                variant="ghost"
-                size="icon-sm"
-                onClick={() => setSystemPromptOpen(true)}
-                title="System Prompt"
-                className={systemPrompt ? "text-terminal-green" : "text-terminal-muted hover:text-terminal-text"}
-              >
-                <RulerIcon className="size-4" />
-              </Button>
-              <Button
-                variant="ghost"
-                size="icon-sm"
-                onClick={() => navigate({ to: '/user/settings' })}
-                title="User Settings"
-                className="text-terminal-muted hover:text-terminal-text"
-              >
-                <Settings className="size-4" />
-              </Button>
+            </div>
+
+            <div className="flex items-center shrink-0">
               <Button
                 variant="ghost"
                 size="icon-sm"
@@ -391,16 +385,6 @@ export function ChatInterface() {
                 className={artifactsPanelOpen ? "text-terminal-green" : "text-terminal-muted hover:text-terminal-text"}
               >
                 <CodeIcon className="size-4" />
-              </Button>
-              <div className="w-px h-4 bg-terminal-border mx-1" />
-              <Button
-                variant="ghost"
-                size="icon-sm"
-                onClick={handleLogout}
-                title="Logout"
-                className="text-terminal-muted hover:text-terminal-red"
-              >
-                <LogOut className="size-4" />
               </Button>
             </div>
           </div>
@@ -477,16 +461,16 @@ export function ChatInterface() {
         </footer>
       </div>
 
-      {/* Artifacts Panel - Desktop */}
-      {artifactsPanelOpen && !isMobile && (
-        <div className="hidden lg:block h-full border-l border-terminal-border bg-terminal-bg relative z-10 w-80 xl:w-96 shrink-0 transition-all duration-300">
+      {/* Artifacts Panel - Desktop (1024px+) */}
+      {artifactsPanelOpen && isDesktop && (
+        <div className="h-full border-l border-terminal-border bg-terminal-bg relative z-10 w-80 xl:w-96 shrink-0 transition-all duration-300">
           <ArtifactsPanel />
         </div>
       )}
 
-      {/* Artifacts Panel - Mobile Sheet */}
-      <Sheet open={artifactsPanelOpen && isMobile} onOpenChange={toggleArtifactsPanel}>
-        <SheetContent side="right" className="w-[85vw] sm:w-[400px] p-0 border-l border-terminal-border bg-terminal-bg text-terminal-text">
+      {/* Artifacts Panel - Mobile/Tablet Sheet (< 1024px) */}
+      <Sheet open={artifactsPanelOpen && !isDesktop} onOpenChange={toggleArtifactsPanel}>
+        <SheetContent side="right" className="w-screen sm:w-[400px] p-0 border-l border-terminal-border bg-terminal-bg text-terminal-text">
           <ArtifactsPanel />
         </SheetContent>
       </Sheet>
@@ -552,5 +536,38 @@ export function ChatInterface() {
         </DialogContent>
       </Dialog>
     </div>
+  );
+}
+
+function TypewriterTitle({ title }: { title: string }) {
+  const [displayTitle, setDisplayTitle] = useState(title);
+
+  useEffect(() => {
+    // If title is short (like 'Chat' or 'New Chat') or empty, just show it immediately
+    if (title.length < 10 || title === 'Chat' || title === 'New Chat') {
+      setDisplayTitle(title);
+      return;
+    }
+
+    // Reset to empty start for animation
+    setDisplayTitle('');
+
+    let i = 0;
+    const intervalId = setInterval(() => {
+      if (i >= title.length) {
+        clearInterval(intervalId);
+        return;
+      }
+      setDisplayTitle(title.slice(0, i + 1));
+      i++;
+    }, 30); // 30ms per char
+
+    return () => clearInterval(intervalId);
+  }, [title]);
+
+  return (
+    <h1 className="text-sm sm:text-lg font-bold truncate">
+      {displayTitle}
+    </h1>
   );
 }

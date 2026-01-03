@@ -1,13 +1,23 @@
 import { createFileRoute, useNavigate } from '@tanstack/react-router';
 import { useState } from 'react';
 import { useCheckAuth, useAPIKeys, useCreateAPIKey, useDeleteAPIKey, useLogout } from '@/hooks/useAuth';
-import { Copy, Check, Trash2, Key, LogOut, ArrowLeft } from 'lucide-react';
+import { useHistory } from '@/hooks/useHistory';
+import { Copy, Key, LogOut, ArrowLeft, Trash2, User, Sparkles, Loader2, Info } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Spinner } from '@/components/ui/spinner';
 import { Switch } from '@/components/ui/switch';
+import { Label } from '@/components/ui/label';
 import { useUIResponseEnabled, useSetUIResponseEnabled } from '@/store';
-import { Sparkles } from 'lucide-react';
+import { cn } from '@/lib/utils';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
 
 export const Route = createFileRoute('/user/settings')({
   component: UserSettingsPage,
@@ -20,11 +30,14 @@ function UserSettingsPage() {
   const createAPIKey = useCreateAPIKey();
   const deleteAPIKey = useDeleteAPIKey();
   const logout = useLogout();
+  const { deleteAllHistory } = useHistory();
 
   const [newKeyName, setNewKeyName] = useState('');
   const [createdKey, setCreatedKey] = useState<string | null>(null);
-  const [copiedKeyId, setCopiedKeyId] = useState<number | null>(null);
+  const [activeTab, setActiveTab] = useState<'profile' | 'keys' | 'preferences'>('profile');
   const [showCreateForm, setShowCreateForm] = useState(false);
+  const [isDeletingHistory, setIsDeletingHistory] = useState(false);
+  const [showSuccess, setShowSuccess] = useState<string | null>(null);
 
   const uiResponseEnabled = useUIResponseEnabled();
   const setUIResponseEnabled = useSetUIResponseEnabled();
@@ -43,12 +56,10 @@ function UserSettingsPage() {
     }
   };
 
-  const handleCopyKey = (key: string, id?: number) => {
+  const handleCopyKey = (key: string) => {
     navigator.clipboard.writeText(key);
-    if (id) {
-      setCopiedKeyId(id);
-      setTimeout(() => setCopiedKeyId(null), 2000);
-    }
+    setShowSuccess("API key copied to clipboard!");
+    setTimeout(() => setShowSuccess(null), 3000);
   };
 
   const handleDeleteKey = async (id: number) => {
@@ -69,10 +80,23 @@ function UserSettingsPage() {
     }
   };
 
+  const handleDeleteAllHistory = async () => {
+    setIsDeletingHistory(true);
+    try {
+      await deleteAllHistory();
+      setShowSuccess("All history deleted successfully!");
+      setTimeout(() => setShowSuccess(null), 3000);
+    } catch (error) {
+      console.error('Failed to delete history', error);
+    } finally {
+      setIsDeletingHistory(false);
+    }
+  };
+
   if (isLoadingAuth) {
     return (
-      <div className="min-h-screen bg-terminal-bg text-terminal-text font-mono flex items-center justify-center">
-        <Spinner />
+      <div className="min-h-screen bg-terminal-bg flex items-center justify-center font-mono">
+        <Loader2 className="w-8 h-8 text-terminal-green animate-spin" />
       </div>
     );
   }
@@ -82,243 +106,297 @@ function UserSettingsPage() {
       <div className="min-h-screen bg-terminal-bg text-terminal-text font-mono flex items-center justify-center">
         <div className="text-center">
           <p className="text-terminal-muted mb-4">You need to be logged in to access this page</p>
-          <Button onClick={() => navigate({ to: '/login' })}>Go to Login</Button>
+          <Button onClick={() => navigate({ to: '/login' })} className="border border-terminal-green text-terminal-green hover:bg-terminal-green/10 bg-transparent rounded-none">Go to Login</Button>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-terminal-bg text-terminal-text font-mono">
-      <div className="max-w-4xl mx-auto p-4 sm:p-6 lg:p-8">
+    <div className="min-h-screen bg-terminal-bg text-terminal-text font-mono selection:bg-terminal-green/30">
+      <div className="max-w-5xl mx-auto p-4 sm:p-6 lg:p-8">
+
         {/* Header */}
-        <div className="flex items-center justify-between mb-6">
-          <div>
-            <h1 className="text-2xl sm:text-3xl font-bold">User Settings</h1>
-            <p className="text-sm text-terminal-muted mt-1">
-              Manage your account and API keys
-            </p>
-          </div>
-          <button
-            onClick={() => navigate({ to: '/' })}
-            className="px-4 py-2 text-sm font-medium border border-terminal-border rounded hover:border-terminal-muted transition flex items-center gap-2"
-          >
-            <ArrowLeft className="size-4" />
-            Back to Chat
-          </button>
-        </div>
-
-        {/* Account Information */}
-        <div className="bg-terminal-surface rounded border border-terminal-border p-6 mb-6">
-          <h2 className="text-lg font-semibold mb-4">Account Information</h2>
-          <div className="space-y-3">
-            <div>
-              <label className="block text-sm font-medium text-terminal-muted mb-1">
-                Username
-              </label>
-              <div className="px-3 py-2 border border-terminal-border rounded bg-terminal-bg text-terminal-text">
-                {authStatus.user?.username}
-              </div>
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-terminal-muted mb-1">
-                User ID
-              </label>
-              <div className="px-3 py-2 border border-terminal-border rounded bg-terminal-bg text-terminal-muted text-sm font-mono">
-                {authStatus.user?.id}
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* API Keys Section */}
-        <div className="bg-terminal-surface rounded border border-terminal-border p-6 mb-6">
-          <div className="flex items-center justify-between mb-4">
-            <div>
-              <h2 className="text-lg font-semibold">API Keys</h2>
-              <p className="text-sm text-terminal-muted mt-1">
-                Create and manage API keys for programmatic access
-              </p>
-            </div>
-            {!showCreateForm && (
-              <Button
-                onClick={() => setShowCreateForm(true)}
-                className="flex items-center gap-2"
-              >
-                <Key className="size-4" />
-                Create API Key
-              </Button>
-            )}
-          </div>
-
-          {/* Create API Key Form */}
-          {showCreateForm && (
-            <form onSubmit={handleCreateKey} className="mb-6 p-4 border border-terminal-border rounded bg-terminal-bg">
-              <h3 className="text-sm font-semibold mb-3">Create New API Key</h3>
-              <div className="flex gap-2">
-                <Input
-                  type="text"
-                  value={newKeyName}
-                  onChange={(e) => setNewKeyName(e.target.value)}
-                  placeholder="Enter a name for this key..."
-                  className="flex-1"
-                  autoFocus
-                />
-                <Button
-                  type="submit"
-                  disabled={!newKeyName.trim() || createAPIKey.isPending}
-                >
-                  {createAPIKey.isPending ? <Spinner size="sm" /> : 'Create'}
-                </Button>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  onClick={() => {
-                    setShowCreateForm(false);
-                    setNewKeyName('');
-                  }}
-                >
-                  Cancel
-                </Button>
-              </div>
-            </form>
-          )}
-
-          {/* Newly Created Key Alert */}
-          {createdKey && (
-            <div className="mb-4 p-4 bg-terminal-green/10 border border-terminal-green/20 rounded">
-              <div className="flex items-start gap-3">
-                <Key className="size-5 text-terminal-green shrink-0 mt-0.5" />
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-semibold text-terminal-green mb-2">
-                    API Key Created Successfully!
-                  </p>
-                  <p className="text-xs text-terminal-muted mb-3">
-                    Make sure to copy your API key now. You won't be able to see it again!
-                  </p>
-                  <div className="flex items-center gap-2">
-                    <code className="flex-1 px-3 py-2 bg-terminal-bg border border-terminal-border rounded text-xs font-mono break-all">
-                      {createdKey}
-                    </code>
-                    <Button
-                      size="sm"
-                      onClick={() => handleCopyKey(createdKey)}
-                      className="shrink-0"
-                    >
-                      <Copy className="size-4" />
-                    </Button>
-                  </div>
-                </div>
-                <button
-                  onClick={() => setCreatedKey(null)}
-                  className="text-terminal-muted hover:text-terminal-text"
-                >
-                  ×
-                </button>
-              </div>
-            </div>
-          )}
-
-          {/* API Keys List */}
-          {isLoadingKeys ? (
-            <div className="flex items-center justify-center py-8">
-              <Spinner />
-            </div>
-          ) : apiKeys && apiKeys.length > 0 ? (
-            <div className="space-y-3">
-              {apiKeys.map((key) => (
-                <div
-                  key={key.id}
-                  className="flex items-center justify-between p-4 border border-terminal-border rounded hover:border-terminal-muted transition"
-                >
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 mb-1">
-                      <Key className="size-4 text-terminal-muted shrink-0" />
-                      <span className="font-medium truncate">{key.name}</span>
-                    </div>
-                    <div className="text-xs text-terminal-muted space-y-0.5">
-                      <div>
-                        Created: {new Date(key.created_at).toLocaleDateString()}
-                      </div>
-                      {key.last_used_at && (
-                        <div>
-                          Last used: {new Date(key.last_used_at).toLocaleDateString()}
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-2 shrink-0">
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      onClick={() => handleDeleteKey(key.id)}
-                      disabled={deleteAPIKey.isPending}
-                      className="text-terminal-red hover:text-terminal-red/80"
-                    >
-                      <Trash2 className="size-4" />
-                    </Button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <div className="text-center py-8 text-terminal-muted">
-              <Key className="size-12 mx-auto mb-3 opacity-50" />
-              <p className="text-sm">No API keys yet</p>
-              <p className="text-xs mt-1">Create one to get started</p>
-            </div>
-          )}
-        </div>
-
-        {/* Chat Settings */}
-        <div className="bg-terminal-surface rounded border border-terminal-border p-6 mb-6">
-          <h2 className="text-lg font-semibold mb-4">Chat Settings</h2>
-          <div className="space-y-6">
-            <div className="flex items-center justify-between">
-              <div className="space-y-0.5">
-                <div className="flex items-center gap-2">
-                  <Sparkles className="size-4 text-terminal-muted" />
-                  <span className="font-medium">AI UI Responses</span>
-                </div>
-                <p className="text-sm text-terminal-muted max-w-sm">
-                  Allow the AI to render beautiful UI components (like charts, status cards, and forms) for certain types of responses.
-                </p>
-              </div>
-              <Switch
-                checked={uiResponseEnabled}
-                onCheckedChange={setUIResponseEnabled}
-              />
-            </div>
-          </div>
-        </div>
-
-        {/* Danger Zone */}
-        <div className="bg-terminal-surface rounded border border-terminal-red/20 p-6">
-          <h2 className="text-lg font-semibold text-terminal-red mb-4">Danger Zone</h2>
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="font-medium">Logout</p>
-              <p className="text-sm text-terminal-muted mt-1">
-                Sign out of your account on this device
-              </p>
-            </div>
+        <div className="flex items-center justify-between mb-8 pb-4 border-b border-terminal-border">
+          <div className="flex items-center gap-4">
             <Button
-              variant="destructive"
-              onClick={handleLogout}
-              disabled={logout.isPending}
-              className="flex items-center gap-2"
+              variant="ghost"
+              size="icon-sm"
+              onClick={() => navigate({ to: '/' })}
+              className="text-terminal-muted hover:text-terminal-text hover:bg-transparent rounded-none"
             >
-              {logout.isPending ? (
-                <Spinner size="sm" />
-              ) : (
-                <>
-                  <LogOut className="size-4" />
-                  Logout
-                </>
-              )}
+              <ArrowLeft className="size-5" />
             </Button>
+            <div>
+              <h1 className="text-2xl font-bold tracking-tight text-terminal-text">
+                User Settings
+              </h1>
+              <p className="text-terminal-muted text-sm mt-1">
+                Manage your account and preferences
+              </p>
+            </div>
           </div>
+
+          <Button
+            onClick={handleLogout}
+            disabled={logout.isPending}
+            variant="ghost"
+            className="text-terminal-red hover:bg-transparent hover:text-terminal-red hover:underline rounded-none transition-none"
+          >
+            {logout.isPending ? (
+              <Loader2 className="mr-2 size-4 animate-spin" />
+            ) : (
+              <LogOut className="mr-2 size-4" />
+            )}
+            Logout
+          </Button>
         </div>
+
+        {/* Navigation Tabs */}
+        <div className="flex gap-4 mb-8 border-b border-terminal-border/30">
+          {[
+            { id: 'profile', label: 'Profile', icon: User },
+            { id: 'keys', label: 'API Keys', icon: Key },
+            { id: 'preferences', label: 'Preferences', icon: Sparkles },
+          ].map((tab) => (
+            <button
+              key={tab.id}
+              onClick={() => setActiveTab(tab.id as any)}
+              className={cn(
+                "flex items-center gap-2 px-4 py-3 text-sm font-medium transition-none border-b-2 hover:bg-terminal-surface/50",
+                activeTab === tab.id
+                  ? "border-terminal-green text-terminal-green bg-terminal-surface/50"
+                  : "border-transparent text-terminal-muted hover:text-terminal-text"
+              )}
+            >
+              <tab.icon className="size-4" />
+              {tab.label}
+            </button>
+          ))}
+        </div>
+
+        {/* Content Area - No animations, straight renders */}
+        <div className="min-h-[400px]">
+
+          {/* PROFILE TAB */}
+          {activeTab === 'profile' && (
+            <div className="space-y-8">
+              <div className="border border-terminal-border bg-terminal-surface p-6">
+                <h3 className="text-lg font-medium mb-4 flex items-center gap-2 text-terminal-green">
+                  <span className="text-terminal-muted">#</span> Account Information
+                </h3>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div className="space-y-2">
+                    <Label className="text-xs text-terminal-muted uppercase tracking-wider">Username</Label>
+                    <div className="px-3 py-2 border border-terminal-border bg-terminal-bg text-terminal-text font-mono">
+                      {authStatus.user?.username}
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <Label className="text-xs text-terminal-muted uppercase tracking-wider">User ID</Label>
+                    <div className="px-3 py-2 border border-terminal-border bg-terminal-bg text-terminal-muted font-mono text-sm">
+                      {authStatus.user?.id}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Danger Zone */}
+              <div className="border border-terminal-red/50 bg-terminal-surface p-6">
+                <h3 className="text-lg font-medium text-terminal-red mb-4 flex items-center gap-2">
+                  <span className="text-terminal-red">!</span> Danger Zone
+                </h3>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="font-medium text-terminal-text">Delete All History</p>
+                    <p className="text-sm text-terminal-muted">Permanently delete all conversation history.</p>
+                  </div>
+
+                  <Dialog>
+                    <DialogTrigger asChild>
+                      <Button variant="destructive" className="bg-terminal-red/10 text-terminal-red hover:bg-terminal-red hover:text-white border border-terminal-red/30 rounded-none transition-none">
+                        <Trash2 className="mr-2 size-4" />
+                        Delete All
+                      </Button>
+                    </DialogTrigger>
+                    <DialogContent className="bg-terminal-surface border border-terminal-border font-mono rounded-none sm:max-w-md">
+                      <DialogHeader>
+                        <DialogTitle className="text-terminal-red">Delete All History?</DialogTitle>
+                        <DialogDescription className="text-terminal-muted">
+                          This action cannot be undone. This will permanently delete your entire conversation history from both your local device and the server.
+                        </DialogDescription>
+                      </DialogHeader>
+                      <DialogFooter className="gap-2 sm:gap-0">
+                        <Button variant="ghost" onClick={() => { }} className="rounded-none border border-terminal-border hover:bg-terminal-border/20">Cancel</Button>
+                        <Button
+                          variant="destructive"
+                          onClick={handleDeleteAllHistory}
+                          disabled={isDeletingHistory}
+                          className="bg-terminal-red text-white hover:bg-terminal-red/90 rounded-none"
+                        >
+                          {isDeletingHistory ? (
+                            <>
+                              <Loader2 className="mr-2 size-4 animate-spin" />
+                              Deleting...
+                            </>
+                          ) : "Yes, Delete Everything"}
+                        </Button>
+                      </DialogFooter>
+                    </DialogContent>
+                  </Dialog>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* API KEYS TAB */}
+          {activeTab === 'keys' && (
+            <div className="border border-terminal-border bg-terminal-surface p-6">
+              <div className="flex items-center justify-between mb-6">
+                <div>
+                  <h3 className="text-lg font-medium text-terminal-green">
+                    <span className="text-terminal-muted">#</span> API Keys
+                  </h3>
+                  <p className="text-sm text-terminal-muted">Manage persistent access keys</p>
+                </div>
+                {!showCreateForm && (
+                  <Button
+                    onClick={() => setShowCreateForm(true)}
+                    className="border border-terminal-green text-terminal-green hover:bg-terminal-green hover:text-terminal-bg bg-transparent rounded-none transition-none"
+                  >
+                    <Key className="size-4 mr-2" />
+                    Create New Key
+                  </Button>
+                )}
+              </div>
+
+              {showCreateForm && (
+                <form
+                  onSubmit={handleCreateKey}
+                  className="mb-6 p-4 border border-terminal-border bg-terminal-bg"
+                >
+                  <h4 className="text-sm font-medium mb-3 text-terminal-text">New API Key</h4>
+                  <div className="flex gap-3">
+                    <Input
+                      value={newKeyName}
+                      onChange={(e) => setNewKeyName(e.target.value)}
+                      placeholder="Key Name (e.g. My App)"
+                      className="flex-1 bg-terminal-bg border-terminal-border rounded-none focus:ring-0 focus:border-terminal-green font-mono"
+                      autoFocus
+                    />
+                    <Button
+                      type="submit"
+                      disabled={!newKeyName.trim() || createAPIKey.isPending}
+                      className="border border-terminal-green text-terminal-green hover:bg-terminal-green hover:text-terminal-bg bg-transparent rounded-none transition-none"
+                    >
+                      {createAPIKey.isPending ? <Loader2 className="animate-spin size-4" /> : 'Create'}
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      onClick={() => {
+                        setShowCreateForm(false);
+                        setNewKeyName('');
+                      }}
+                      className="text-terminal-muted hover:text-terminal-text rounded-none"
+                    >
+                      Cancel
+                    </Button>
+                  </div>
+                </form>
+              )}
+
+              {createdKey && (
+                <div className="mb-6 p-4 border border-terminal-green bg-terminal-bg flex gap-4 items-start">
+                  <Key className="size-5 text-terminal-green mt-0.5" />
+                  <div className="flex-1">
+                    <h4 className="font-medium text-terminal-green mb-1">Key Created Successfully</h4>
+                    <p className="text-sm text-terminal-muted mb-3">Copy this key now, you won't see it again.</p>
+                    <div className="flex gap-2">
+                      <code className="flex-1 p-2 bg-terminal-surface border border-terminal-border font-mono text-xs text-terminal-text select-all">
+                        {createdKey}
+                      </code>
+                      <Button size="icon-sm" onClick={() => handleCopyKey(createdKey)} className="rounded-none border border-terminal-border hover:bg-terminal-border">
+                        <Copy className="size-4" />
+                      </Button>
+                    </div>
+                  </div>
+                  <button onClick={() => setCreatedKey(null)} className="text-terminal-muted hover:text-terminal-text">×</button>
+                </div>
+              )}
+
+              {isLoadingKeys ? (
+                <div className="py-8 flex justify-center"><Loader2 className="animate-spin text-terminal-muted" /></div>
+              ) : apiKeys && apiKeys.length > 0 ? (
+                <div className="space-y-0 border-t border-terminal-border">
+                  {apiKeys.map((key) => (
+                    <div key={key.id} className="flex items-center justify-between p-4 border-b border-terminal-border hover:bg-terminal-bg/50 transition-none">
+                      <div>
+                        <div className="flex items-center gap-2 font-medium text-sm">
+                          <Key className="size-3 text-terminal-muted" />
+                          {key.name}
+                        </div>
+                        <div className="text-xs text-terminal-muted mt-1 font-mono">
+                          <span className="mr-4">Created: {new Date(key.created_at).toLocaleDateString()}</span>
+                          {key.last_used_at && <span>Last Used: {new Date(key.last_used_at).toLocaleDateString()}</span>}
+                        </div>
+                      </div>
+                      <Button
+                        variant="ghost"
+                        size="icon-sm"
+                        onClick={() => handleDeleteKey(key.id)}
+                        className="text-terminal-muted hover:text-terminal-red hover:bg-transparent rounded-none"
+                      >
+                        <Trash2 className="size-4" />
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="text-center py-12 text-terminal-muted border border-terminal-border border-dashed">
+                  <p>No API keys found</p>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* PREFERENCES TAB */}
+          {activeTab === 'preferences' && (
+            <div className="space-y-6">
+              <div className="border border-terminal-border bg-terminal-surface p-6">
+                <h3 className="text-lg font-medium mb-4 flex items-center gap-2 text-terminal-green">
+                  <span className="text-terminal-muted">#</span> Chat Interface
+                </h3>
+
+                <div className="flex items-center justify-between py-2">
+                  <div className="space-y-0.5">
+                    <Label className="text-base font-medium flex items-center gap-2">
+                      Rich UI Responses
+                      <Info className="size-3 text-terminal-muted" />
+                    </Label>
+                    <p className="text-sm text-terminal-muted max-w-md">
+                      Allow the AI to render interactive components (charts, cards, forms) instead of just text.
+                    </p>
+                  </div>
+                  <Switch
+                    checked={uiResponseEnabled}
+                    onCheckedChange={setUIResponseEnabled}
+                    className="data-[state=checked]:bg-terminal-green data-[state=unchecked]:bg-terminal-border border border-terminal-border"
+                  />
+                </div>
+              </div>
+            </div>
+          )}
+
+        </div>
+
+        {/* Success Toast */}
+        {showSuccess && (
+          <div className="fixed bottom-8 right-8 bg-terminal-surface text-terminal-green px-6 py-3 border border-terminal-green font-mono z-50 shadow-md">
+            <span className="mr-2">✓</span> {showSuccess}
+          </div>
+        )}
       </div>
     </div>
   );

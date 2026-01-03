@@ -11,6 +11,34 @@ import type { ToolUIPart } from 'ai';
 
 const API_BASE_URL = '/api';
 
+const GLOBAL_SYSTEM_PROMPT = `When user asks for a diagram, make it in a mermaid diagram format the UI can render it automatically. Always ensure to style the diagram in a modern and professional way. with a color scheme that is easy to read and visually appealing.
+
+To provide a title for a code block, use the syntax \`\`\`language:filename.
+
+for example:
+\`\`\`mermaid:flowchart.mmd
+graph TD;
+    A-->B;
+    A-->C;
+    B-->D;
+    C-->D;
+\`\`\`
+
+\`\`\`python:index.py
+print("hello world")
+\`\`\`
+
+
+\`\`\`html:index.html
+<html>
+<body>
+<h1>hello world</h1>
+</body>
+</html>
+\`\`\`
+
+`;
+
 interface Model {
   id: string;
   object: string;
@@ -461,7 +489,7 @@ export function useSendMessage() {
 
     if (systemPrompt && systemPrompt.trim()) {
       // Always append UI response guide to user's system prompt if enabled
-      let fullSystemPrompt = systemPrompt + (uiResponseEnabled ? UI_RESPONSE_GUIDE : '');
+      let fullSystemPrompt = systemPrompt + GLOBAL_SYSTEM_PROMPT + (uiResponseEnabled ? UI_RESPONSE_GUIDE : '');
 
       // Inject workspace files if available
       if (activeConversationId) {

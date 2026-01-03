@@ -17,44 +17,9 @@ Examples of good titles:
 // Track which conversations have already had titles generated
 const generatedTitles = new Set<string>();
 
-// Track ongoing typewriter animations to cancel if needed
-const activeAnimations = new Map<string, boolean>();
-
-/**
- * Animate title with typewriter effect
- */
-async function typewriterTitle(
-  conversationId: string,
-  title: string,
-  charDelay: number = 30
-): Promise<void> {
-  // Cancel any existing animation for this conversation
-  activeAnimations.set(conversationId, true);
-
-  const setTitle = useUIStore.getState().setConversationTitle;
-
-  // Start with empty and build up
-  for (let i = 1; i <= title.length; i++) {
-    // Check if animation was cancelled
-    if (!activeAnimations.get(conversationId)) {
-      return;
-    }
-
-    const partialTitle = title.slice(0, i);
-    setTitle(conversationId, partialTitle);
-
-    // Wait before next character
-    await new Promise(resolve => setTimeout(resolve, charDelay));
-  }
-
-  // Animation complete
-  activeAnimations.delete(conversationId);
-}
-
 /**
  * Generate a title for a conversation using the chat completions API.
  * This is a standalone utility function that can be called after message completion.
- * The title is revealed with a typewriter animation effect.
  */
 export async function generateConversationTitle(
   conversationId: string,
@@ -126,9 +91,9 @@ export async function generateConversationTitle(
       }
 
       if (title.length > 0) {
-        // Animate the title with typewriter effect
-        console.log('[TitleGenerator] Generating title with typewriter:', title);
-        await typewriterTitle(conversationId, title);
+        // Set title directly without animation
+        console.log('[TitleGenerator] Setting title:', title);
+        useUIStore.getState().setConversationTitle(conversationId, title);
         return title;
       }
     }
@@ -147,8 +112,6 @@ export async function generateConversationTitle(
  */
 export function resetTitleGeneration(conversationId: string): void {
   generatedTitles.delete(conversationId);
-  // Cancel any ongoing animation
-  activeAnimations.set(conversationId, false);
 }
 
 /**
@@ -156,11 +119,4 @@ export function resetTitleGeneration(conversationId: string): void {
  */
 export function hasTitleBeenGenerated(conversationId: string): boolean {
   return generatedTitles.has(conversationId);
-}
-
-/**
- * Cancel ongoing typewriter animation for a conversation
- */
-export function cancelTitleAnimation(conversationId: string): void {
-  activeAnimations.set(conversationId, false);
 }

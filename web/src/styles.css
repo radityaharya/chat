@@ -380,3 +380,24 @@ body.mobile-menu-open {
   width: 100%;
   height: 100%;
 }
+
+/* =============================================
+   Chat Message Performance Optimizations
+   ============================================= */
+
+/* content-visibility: auto skips rendering off-screen messages 
+   This dramatically improves initial load and scroll performance */
+.group\/message {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 150px; /* Estimated height to prevent layout shift */
+}
+
+/* During active streaming, disable content-visibility to ensure smooth updates */
+.group\/message:has([data-streaming="true"]) {
+  content-visibility: visible;
+}
+
+/* Reduce paint complexity for message containers */
+.group\/message > * {
+  contain: layout style;
+}

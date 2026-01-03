@@ -2,6 +2,7 @@ import { useCallback, useRef } from 'react';
 import { useUIStore, useDeleteConversation } from '../store';
 import { useShallow } from 'zustand/react/shallow';
 import type { Conversation } from '../store';
+import { loadFullConversation } from '@/lib/conversation-manager';
 
 /**
  * Generate a simple hash for a conversation to detect changes.
@@ -130,14 +131,27 @@ export function useHistory() {
       const toPush: ConversationHistory[] = [];
       const toPull: string[] = [];
 
-      // Check each local conversation
+      // Check each local conversation - load full data from IndexedDB for syncing
       for (const conv of Object.values(currentConversations)) {
+        // Load full conversation from IndexedDB (since Zustand only has metadata)
+        const fullConv = await loadFullConversation(conv.id);
+        if (!fullConv) continue;
+
         // Skip conversations that are currently streaming
-        if (conv.messages.some(m => m.streaming)) {
+        if (fullConv.messages.some(m => m.streaming)) {
           continue;
         }
 
-        const localHash = generateConversationHash(conv);
+        // Create a complete conversation object for hashing and sync
+        const completeConv: Conversation = {
+          id: conv.id,
+          title: conv.title,
+          messages: fullConv.messages,
+          checkpoints: fullConv.checkpoints,
+          updatedAt: conv.updatedAt,
+        };
+
+        const localHash = generateConversationHash(completeConv);
         const serverItem = serverItems.get(conv.id);
 
         if (!serverItem) {
@@ -147,7 +161,7 @@ export function useHistory() {
             version: 1,
             hash: localHash,
             title: conv.title,
-            data: conv,
+            data: completeConv,
             updated_at: new Date(conv.updatedAt).toISOString(),
             created_at: new Date(conv.updatedAt).toISOString(),
           });
@@ -160,7 +174,7 @@ export function useHistory() {
               version: serverItem.version + 1,
               hash: localHash,
               title: conv.title,
-              data: conv,
+              data: completeConv,
               updated_at: new Date(conv.updatedAt).toISOString(),
               created_at: new Date(conv.updatedAt).toISOString(),
             });
@@ -266,17 +280,31 @@ export function useHistory() {
   const syncHistoryFull = useCallback(async () => {
     const currentConversations = useUIStore.getState().conversations;
 
-    // Convert local conversations to history format
-    const localHistories: ConversationHistory[] = Object.values(currentConversations)
-      .filter(conv => !conv.messages.some(m => m.streaming)) // Skip streaming
-      .map((conv) => ({
+    // Load full conversation data from IndexedDB and convert to history format
+    const localHistories: ConversationHistory[] = [];
+
+    for (const conv of Object.values(currentConversations)) {
+      const fullConv = await loadFullConversation(conv.id);
+      if (!fullConv) continue;
+
+      // Skip streaming conversations
+      if (fullConv.messages.some(m => m.streaming)) continue;
+
+      localHistories.push({
         conversation_id: conv.id,
         version: 1,
         title: conv.title,
-        data: conv,
+        data: {
+          id: conv.id,
+          title: conv.title,
+          messages: fullConv.messages,
+          checkpoints: fullConv.checkpoints,
+          updatedAt: conv.updatedAt,
+        },
         updated_at: new Date(conv.updatedAt).toISOString(),
         created_at: new Date(conv.updatedAt).toISOString(),
-      }));
+      });
+    }
 
     const response = await fetch('/api/v1/user/me/history', {
       method: 'PUT',
@@ -394,7 +422,6 @@ export function useHistory() {
     return response.json();
   }, []);
 
-  // Delete conversation both locally and from server
   const deleteConversationWithSync = useCallback(async (conversationId: string) => {
     try {
       // Delete from server first
@@ -408,6 +435,30 @@ export function useHistory() {
     }
   }, [deleteHistoryItem, deleteConversation]);
 
+  const deleteAllHistory = useCallback(async () => {
+    try {
+      // Delete from server
+      await deleteHistoryItem('all');
+
+      // Clear local store
+      useUIStore.setState({
+        conversations: {},
+        activeConversationId: null
+      });
+
+      // Clear indexedDB
+      const { clearConversationData } = await import('@/lib/conversation-storage');
+      await clearConversationData();
+
+      // Clear local hash cache
+      localHashesRef.current.clear();
+
+    } catch (error) {
+      console.error('Failed to delete all history:', error);
+      throw error;
+    }
+  }, [deleteHistoryItem]);
+
   return {
     syncStatus: { syncing: syncStatus === 'syncing', lastSyncedAt, error: syncError },
     syncHistory,
@@ -415,6 +466,7 @@ export function useHistory() {
     loadHistory,
     deleteHistoryItem,
     deleteConversationWithSync,
+    deleteAllHistory,
     fetchHistory,
   };
 }
@@ -445,11 +497,13 @@ export function useAutoSync(intervalMs: number = 60000) {
       return;
     }
 
-    // Check for any streaming messages
-    const conversations = useUIStore.getState().conversations;
-    const hasStreaming = Object.values(conversations).some(
-      conv => conv.messages.some(m => m.streaming)
-    );
+    // Check for streaming in active conversation only
+    // (With lazy-loading, only the active conversation has loaded messages)
+    const state = useUIStore.getState();
+    const activeConv = state.activeConversationId
+      ? state.conversations[state.activeConversationId]
+      : null;
+    const hasStreaming = activeConv?.messages?.some(m => m.streaming) ?? false;
 
     if (hasStreaming) {
       console.log('[AutoSync] Skipping - streaming in progress');
