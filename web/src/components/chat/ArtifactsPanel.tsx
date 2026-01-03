@@ -4,7 +4,7 @@ import { extractArtifacts, type CodeArtifact } from '@/lib/artifacts';
 import { Artifact, ArtifactHeader, ArtifactTitle, ArtifactDescription, ArtifactContent } from '@/components/ai-elements/artifact';
 import { CodeBlock } from '@/components/ai-elements/code-block';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { CalendarIcon, CodeIcon, FileIcon, FolderIcon, UploadIcon, Loader2Icon } from 'lucide-react';
+import { CalendarIcon, CodeIcon, FileIcon, FolderIcon, UploadIcon, Loader2Icon, PlayIcon } from 'lucide-react';
 import { format } from 'date-fns';
 import { useMemo, useState, useRef, useEffect } from 'react';
 import { Streamdown } from 'streamdown';
@@ -18,6 +18,7 @@ import { cn } from '@/lib/utils';
 import { useActiveConversationId } from '@/store';
 import { ArrowLeftIcon } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
+import { useContainer } from '@/hooks/useContainer';
 
 function FileViewer({ conversationId, file }: { conversationId: string; file: FileEntry }) {
   const { data: content, isLoading, error } = useQuery({
@@ -43,6 +44,7 @@ export function ArtifactsPanel() {
   const [searchQuery, setSearchQuery] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
   const activeConversationId = useActiveConversationId();
+  const { runCommand } = useContainer();
 
   // CRITICAL FIX: Use ref to cache artifacts and track conversation ID
   const lastArtifactsRef = useRef<{ message: any, artifacts: CodeArtifact[] }[]>([]);
@@ -281,20 +283,45 @@ export function ArtifactsPanel() {
                                 className="rounded-none border-none text-[10px] leading-tight [&_pre]:whitespace-pre-wrap! [&_pre]:break-all! [&_code]:whitespace-pre-wrap! [&_code]:break-all!"
                               />
                             )}
-                            <Button
-                              variant="secondary"
-                              size="sm"
-                              className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity h-6 px-2 text-[10px]"
-                              onClick={() => {
-                                const blob = new Blob([artifact.code], { type: 'text/plain' });
-                                const file = new File([blob], artifact.title || `artifact-${Date.now()}.${artifact.language || 'txt'}`);
-                                uploadFile(file);
-                              }}
-                              disabled={!activeConversationId || isUploading}
-                            >
-                              {isUploading ? <Loader2Icon className="size-3 animate-spin" /> : <UploadIcon className="size-3 mr-1" />}
-                              Save
-                            </Button>
+                            <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity flex gap-2">
+                              {['bash', 'sh', 'zsh', 'python', 'python3', 'javascript', 'js'].includes(artifact.language || '') && (
+                                <Button
+                                  variant="secondary"
+                                  size="sm"
+                                  className="h-6 px-2 text-[10px]"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    const fileName = artifact.title || 'script';
+                                    let command = '';
+                                    switch (artifact.language) {
+                                      case 'bash': case 'sh': case 'zsh': command = artifact.code; break;
+                                      case 'python': case 'python3': command = `python3 "${fileName}"`; break;
+                                      case 'javascript': case 'js': command = `node "${fileName}"`; break;
+                                    }
+                                    if (command) runCommand({ command });
+                                  }}
+                                  title="Run in Terminal"
+                                >
+                                  <PlayIcon className="size-3 mr-1" />
+                                  Run
+                                </Button>
+                              )}
+                              <Button
+                                variant="secondary"
+                                size="sm"
+                                className="h-6 px-2 text-[10px]"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  const blob = new Blob([artifact.code], { type: 'text/plain' });
+                                  const file = new File([blob], artifact.title || `artifact-${Date.now()}.${artifact.language || 'txt'}`);
+                                  uploadFile(file);
+                                }}
+                                disabled={!activeConversationId || isUploading}
+                              >
+                                {isUploading ? <Loader2Icon className="size-3 animate-spin" /> : <UploadIcon className="size-3 mr-1" />}
+                                Save
+                              </Button>
+                            </div>
                             <div className="absolute inset-x-0 bottom-0 h-8 bg-linear-to-t from-background to-transparent pointer-events-none" />
                           </ArtifactContent>
                         </Artifact>
