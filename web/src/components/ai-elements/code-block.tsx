@@ -61,12 +61,12 @@ export async function highlightCode(
   return await Promise.all([
     codeToHtml(code, {
       lang: language,
-      theme: "github-dark",
+      theme: "github-light-high-contrast",
       transformers,
     }),
     codeToHtml(code, {
       lang: language,
-      theme: "material-theme-darker",
+      theme: "vitesse-black",
       transformers,
     }),
   ]);
@@ -102,7 +102,7 @@ export const CodeBlock = ({
     <CodeBlockContext.Provider value={{ code }}>
       <div
         className={cn(
-          "group relative w-full overflow-hidden rounded-md border bg-background text-foreground",
+          "group relative w-full overflow-hidden rounded-none border bg-background text-foreground",
           className
         )}
         {...props}

@@ -1,6 +1,11 @@
 package model
 
-import "go.uber.org/zap"
+import (
+	"encoding/json"
+	"strconv"
+
+	"go.uber.org/zap"
+)
 
 type BackendConfig struct {
 	Name              string            `json:"name"`
@@ -30,13 +35,47 @@ type Config struct {
 	GeoapifyAPIKey     string            `json:"geoapify_api_key,omitempty"` // Geoapify API key for geo tool
 }
 
+// FlexibleFloat64 handles both string and float64 JSON values
+type FlexibleFloat64 float64
+
+func (f *FlexibleFloat64) UnmarshalJSON(b []byte) error {
+	if len(b) >= 2 && b[0] == '"' && b[len(b)-1] == '"' {
+		// It's a string, strip quotes and parse
+		var s string
+		if err := json.Unmarshal(b, &s); err != nil {
+			return err
+		}
+		if s == "" {
+			*f = 0
+			return nil
+		}
+		val, err := strconv.ParseFloat(s, 64)
+		if err != nil {
+			return err
+		}
+		*f = FlexibleFloat64(val)
+		return nil
+	}
+	// It's a number, unmarshal normally
+	var val float64
+	if err := json.Unmarshal(b, &val); err != nil {
+		return err
+	}
+	*f = FlexibleFloat64(val)
+	return nil
+}
+
 // ModelPricing represents pricing information for a model
 type ModelPricing struct {
-	Hourly   float64 `json:"hourly,omitempty"`
-	Input    float64 `json:"input,omitempty"`
-	Output   float64 `json:"output,omitempty"`
-	Base     float64 `json:"base,omitempty"`
-	Finetune float64 `json:"finetune,omitempty"`
+	Hourly     FlexibleFloat64 `json:"hourly,omitempty"`
+	Input      FlexibleFloat64 `json:"input,omitempty"`
+	Output     FlexibleFloat64 `json:"output,omitempty"`
+	Base       FlexibleFloat64 `json:"base,omitempty"`
+	Finetune   FlexibleFloat64 `json:"finetune,omitempty"`
+	Prompt     FlexibleFloat64 `json:"prompt,omitempty"`     // OpenRouter field
+	Completion FlexibleFloat64 `json:"completion,omitempty"` // OpenRouter field
+	Request    FlexibleFloat64 `json:"request,omitempty"`    // OpenRouter field
+	Image      FlexibleFloat64 `json:"image,omitempty"`      // OpenRouter field
 }
 
 // ModelConfig represents configuration details for a model
@@ -59,6 +98,9 @@ type Model struct {
 	// Extended fields from providers
 	Type          string        `json:"type,omitempty"`           // Model type: chat, audio, image, video, embedding, moderation, etc.
 	DisplayName   string        `json:"display_name,omitempty"`   // Human-readable name
+	Name          string        `json:"name,omitempty"`           // Alias for DisplayName (OpenRouter)
+	CanonicalSlug string        `json:"canonical_slug,omitempty"` // OpenRouter field
+	Description   string        `json:"description,omitempty"`    // OpenRouter field
 	Organization  string        `json:"organization,omitempty"`   // Organization that created the model
 	Link          string        `json:"link,omitempty"`           // URL to model documentation
 	License       string        `json:"license,omitempty"`        // Model license
@@ -66,6 +108,11 @@ type Model struct {
 	Running       *bool         `json:"running,omitempty"`        // Whether the model is currently running
 	Pricing       *ModelPricing `json:"pricing,omitempty"`        // Pricing information
 	Config        *ModelConfig  `json:"config,omitempty"`         // Model configuration
+
+	// OpenRouter specific nested structures
+	Architecture        *map[string]interface{} `json:"architecture,omitempty"`
+	TopProvider         *map[string]interface{} `json:"top_provider,omitempty"`
+	SupportedParameters []string                `json:"supported_parameters,omitempty"`
 }
 
 // ModelsResponse represents the OpenAI-compatible models list response

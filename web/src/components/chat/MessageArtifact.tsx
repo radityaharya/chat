@@ -180,8 +180,9 @@ export function MessageArtifact({ artifact, messageId, index }: MessageArtifactP
       </ArtifactHeader>
       <ArtifactContent className="p-0">
         {isMermaid && mode === 'preview' ? (
-          <div className="bg-white/80 border-b p-0 rounded-b-lg overflow-x-auto">
-            <MessageResponse className="border-0 p-0">
+          <div className="border-b p-0 rounded-b-lg overflow-x-auto">
+            {/* child border  */}
+            <MessageResponse className="*:border-0 p-0 rounded-none *:rounded-none [&>*:nth-child(2)]:p-0!" mermaid={{ config: { theme: 'dark' } }}>
               {`\`\`\`mermaid\n${artifact.code}\n\`\`\``}
             </MessageResponse>
           </div>
@@ -215,6 +216,6 @@ export function MessageArtifact({ artifact, messageId, index }: MessageArtifactP
           />
         )}
       </ArtifactContent>
-    </Artifact>
+    </Artifact >
   );
 }

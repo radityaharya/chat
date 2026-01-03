@@ -65,14 +65,17 @@ func createBackendRequest(backend model.BackendConfig, logger *zap.Logger) (*htt
 	return req, nil
 }
 
-func parseBackendResponse(body []byte) ([]model.Model, error) {
+func parseBackendResponse(body []byte, logger *zap.Logger) ([]model.Model, error) {
 	var backendModels model.ModelsResponse
 	if err := json.Unmarshal(body, &backendModels); err == nil && backendModels.Data != nil {
 		return backendModels.Data, nil
+	} else if err != nil {
+		logger.Warn("Failed to unmarshal models response (list format)", zap.Error(err))
 	}
 
 	var models []model.Model
 	if err := json.Unmarshal(body, &models); err != nil {
+		logger.Warn("Failed to unmarshal models response (array format)", zap.Error(err))
 		return nil, err
 	}
 	return models, nil
@@ -87,9 +90,16 @@ func fetchBackendModels(backend model.BackendConfig, logger *zap.Logger) ([]mode
 	client := &http.Client{Timeout: defaultClientTimeout}
 	resp, err := client.Do(req)
 	if err != nil {
+		logger.Warn("Failed to execute request to backend",
+			zap.String("backend", backend.Name),
+			zap.Error(err))
 		return nil, err
 	}
 	defer resp.Body.Close()
+	bodyBytes, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
 
 	if resp.StatusCode != http.StatusOK {
 		logger.Warn("Backend returned non-OK status for models",
@@ -98,22 +108,24 @@ func fetchBackendModels(backend model.BackendConfig, logger *zap.Logger) ([]mode
 		return nil, nil
 	}
 
-	bodyBytes, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, err
-	}
-
-	return parseBackendResponse(bodyBytes)
+	return parseBackendResponse(bodyBytes, logger)
 }
 
 func processModel(m model.Model, backend model.BackendConfig) model.Model {
+	displayName := m.DisplayName
+	if displayName == "" {
+		displayName = m.Name
+	}
+
 	return model.Model{
 		ID:            backend.Prefix + m.ID,
 		Object:        m.Object,
 		Created:       m.Created,
 		OwnedBy:       backend.Name,
 		Type:          m.Type,
-		DisplayName:   m.DisplayName,
+		DisplayName:   displayName,
+		CanonicalSlug: m.CanonicalSlug,
+		Description:   m.Description,
 		Organization:  m.Organization,
 		Link:          m.Link,
 		License:       m.License,
@@ -121,6 +133,10 @@ func processModel(m model.Model, backend model.BackendConfig) model.Model {
 		Running:       m.Running,
 		Pricing:       m.Pricing,
 		Config:        m.Config,
+		// Forward OpenRouter-specific fields
+		Architecture:        m.Architecture,
+		TopProvider:         m.TopProvider,
+		SupportedParameters: m.SupportedParameters,
 	}
 }
 
@@ -147,8 +163,28 @@ func HandleModels(w http.ResponseWriter, r *http.Request, cfg *model.Config) {
 			zap.Int("modelCount", len(models)))
 
 		for _, m := range models {
-			if m.Type != "" && m.Type != modelTypeChat {
-				continue
+			// Filter out non-chat models
+			loweredID := strings.ToLower(m.ID)
+			loweredName := strings.ToLower(m.DisplayName)
+
+			// If Type is explicitly set, use it. Otherwise, infer from ID/Name.
+			if m.Type != "" {
+				if m.Type != modelTypeChat {
+					continue
+				}
+			} else {
+				// Fallback filtering for providers that don't specify type
+				nonChatKeywords := []string{"embedding", "audio", "video", "moderation", "imagegen"}
+				isNonChat := false
+				for _, kw := range nonChatKeywords {
+					if strings.Contains(loweredID, kw) || strings.Contains(loweredName, kw) {
+						isNonChat = true
+						break
+					}
+				}
+				if isNonChat {
+					continue
+				}
 			}
 
 			prefixedID := backend.Prefix + m.ID

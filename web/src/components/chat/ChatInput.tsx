@@ -39,18 +39,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from '@/components/ui/popover';
-import {
-  ModelSelector,
-  ModelSelectorContent,
-  ModelSelectorEmpty,
-  ModelSelectorGroup,
-  ModelSelectorInput,
-  ModelSelectorItem,
-  ModelSelectorList,
-  ModelSelectorLogo,
-  ModelSelectorName,
-  ModelSelectorTrigger,
-} from '@/components/ai-elements/model-selector';
+import { ModelSelector } from '@/components/chat/ModelSelector';
 import {
   CheckIcon,
   Trash2,
@@ -59,18 +48,44 @@ import {
   FileIcon,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { useRef, useState, useMemo } from 'react';
+import { useRef, useState } from 'react';
 import { useUIStore, useQuotedText, useSetQuotedText } from '@/store';
 import { useShallow } from 'zustand/react/shallow';
 import { tools } from '@/tools';
 import { cn } from '@/lib/utils';
 
 
-// Define Model interface
+// Define Model interface with extended metadata
+export interface ModelPricing {
+  prompt?: number;
+  completion?: number;
+  input?: number;
+  output?: number;
+  request?: number;
+  image?: number;
+}
+
 export interface Model {
   id: string;
   object?: string;
   owned_by?: string;
+  display_name?: string;
+  name?: string;
+  canonical_slug?: string;
+  description?: string;
+  context_length?: number;
+  pricing?: ModelPricing;
+  architecture?: {
+    modality?: string;
+    input_modalities?: string[];
+    output_modalities?: string[];
+  };
+  top_provider?: {
+    context_length?: number;
+    max_completion_tokens?: number;
+    is_moderated?: boolean;
+  };
+  supported_parameters?: string[];
 }
 
 export interface QueueMessage {
@@ -92,30 +107,6 @@ interface ChatInputProps {
   onStop?: () => void;
 }
 
-// Helpers to parse model info for the UI
-const getModelProvider = (modelId: string) => {
-  const parts = modelId.split('/');
-  if (parts.length > 1) return parts[0];
-  if (modelId.startsWith('gpt')) return 'openai';
-  if (modelId.startsWith('claude')) return 'anthropic';
-  if (modelId.startsWith('gemini')) return 'google';
-  return 'unknown';
-};
-
-const getProviderSlug = (provider: string) => {
-  switch (provider.toLowerCase()) {
-    case 'openai': return 'openai';
-    case 'anthropic': return 'anthropic';
-    case 'google': return 'google';
-    case 'mistral': return 'mistral';
-    default: return 'openai'; // fallback for logo
-  }
-};
-
-const getProviderName = (provider: string) => {
-  return provider.charAt(0).toUpperCase() + provider.slice(1);
-}
-
 export function ChatInput({
   onSend,
   disabled,
@@ -128,7 +119,6 @@ export function ChatInput({
   status = "ready",
   onStop
 }: ChatInputProps) {
-  const [modelSelectorOpen, setModelSelectorOpen] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   // Combined selector for tools - reduces from 3 subscriptions to 1
@@ -159,29 +149,6 @@ export function ChatInput({
       textarea.form?.requestSubmit();
     }
   };
-
-  const selectedModelData = useMemo(() => {
-    const model = models.find((m) => m.id === selectedModel);
-    if (!model) return null;
-    const provider = getModelProvider(model.id);
-    return {
-      ...model,
-      chef: getProviderName(provider),
-      chefSlug: getProviderSlug(provider),
-      name: model.id
-    }
-  }, [models, selectedModel]);
-
-  const groupedModels = useMemo(() => {
-    const groups: Record<string, typeof models> = {};
-    models.forEach(model => {
-      const provider = getModelProvider(model.id);
-      const name = getProviderName(provider);
-      if (!groups[name]) groups[name] = [];
-      groups[name].push(model);
-    });
-    return groups;
-  }, [models]);
 
   const handleSubmit = async (message: PromptInputMessage) => {
     if ((message.text || message.files?.length) && !disabled) {
@@ -225,7 +192,7 @@ export function ChatInput({
               key={index}
               onClick={handleSuggestionClick}
               suggestion={suggestion}
-              className='rounded-none'
+              className='rounded-none bg-terminal-surface'
             />
           ))}
         </Suggestions>
@@ -268,7 +235,7 @@ export function ChatInput({
           </PromptInputQuote>
         )}
 
-        <PromptInputBody className="px-2 sm:px-3 pt-2">
+        <PromptInputBody className="px-2 sm:px-3 pt-2 bg-terminal-surface">
           <PromptInputAttachments>
             {(attachment) => <PromptInputAttachment data={attachment} />}
           </PromptInputAttachments>
@@ -276,7 +243,7 @@ export function ChatInput({
             ref={textareaRef}
             placeholder={placeholder}
             disabled={disabled}
-            className="bg-terminal-bg border-terminal-border text-terminal-text min-h-[50px] sm:min-h-[60px] text-sm"
+            className="bg-terminal-surface border-terminal-border text-terminal-text min-h-[50px] sm:min-h-[60px] text-sm"
           />
         </PromptInputBody>
 
@@ -377,54 +344,11 @@ export function ChatInput({
             </Popover>
 
             <ModelSelector
-              onOpenChange={setModelSelectorOpen}
-              open={modelSelectorOpen}
-            >
-              <ModelSelectorTrigger asChild>
-                <PromptInputButton disabled={disabled} className="text-xs sm:text-sm h-7 sm:h-8 max-w-[140px] sm:max-w-none rounded-none border border-transparent hover:border-terminal-border hover:bg-terminal-surface/50 font-mono">
-                  {selectedModelData?.chefSlug && (
-                    <ModelSelectorLogo provider={selectedModelData.chefSlug} className="shrink-0" />
-                  )}
-                  <ModelSelectorName className="truncate">
-                    {selectedModelData?.name || "Select Model"}
-                  </ModelSelectorName>
-                </PromptInputButton>
-              </ModelSelectorTrigger>
-
-              <ModelSelectorContent className="w-[90vw] sm:w-auto rounded-none border-terminal-border bg-terminal-surface">
-                <ModelSelectorInput placeholder="Search models..." className="rounded-none border-b border-terminal-border font-mono" />
-                <ModelSelectorList className="rounded-none">
-                  <ModelSelectorEmpty className="font-mono text-terminal-muted">No models found.</ModelSelectorEmpty>
-                  {Object.entries(groupedModels).map(([chef, chefModels]) => (
-                    <ModelSelectorGroup key={chef} heading={chef} className="font-mono text-xs">
-                      {chefModels.map((m) => {
-                        const provider = getModelProvider(m.id);
-                        const slug = getProviderSlug(provider);
-                        return (
-                          <ModelSelectorItem
-                            key={m.id}
-                            value={m.id}
-                            onSelect={() => {
-                              onSelectModel(m.id);
-                              setModelSelectorOpen(false);
-                            }}
-                            className="rounded-none aria-selected:bg-terminal-bg/50"
-                          >
-                            <ModelSelectorLogo provider={slug} />
-                            <ModelSelectorName className="text-xs sm:text-sm truncate">{m.id}</ModelSelectorName>
-                            {selectedModel === m.id ? (
-                              <CheckIcon className="ml-auto size-4 shrink-0 text-terminal-green" />
-                            ) : (
-                              <div className="ml-auto size-4 shrink-0" />
-                            )}
-                          </ModelSelectorItem>
-                        )
-                      })}
-                    </ModelSelectorGroup>
-                  ))}
-                </ModelSelectorList>
-              </ModelSelectorContent>
-            </ModelSelector>
+              models={models}
+              selectedModel={selectedModel}
+              onSelectModel={onSelectModel}
+              disabled={disabled}
+            />
           </PromptInputTools>
 
           <div className="flex items-center gap-2">
