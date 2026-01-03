@@ -9,6 +9,7 @@ import {
   QueueSection,
   QueueSectionContent,
 } from '@/components/ai-elements/queue';
+import { Suggestion, Suggestions } from "@/components/ai-elements/suggestion";
 import {
   PromptInput,
   PromptInputActionAddAttachments,
@@ -132,6 +133,23 @@ export function ChatInput({
     toggleTool: s.toggleTool,
   })));
 
+  const suggestions = useUIStore(useShallow(state => {
+    const activeId = state.activeConversationId;
+    return activeId ? state.conversations[activeId]?.suggestions || [] : [];
+  }));
+
+  const handleSuggestionClick = (suggestion: string) => {
+    const textarea = textareaRef.current;
+    if (textarea && !disabled) {
+      const nativeInputValueSetter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, "value")?.set;
+      nativeInputValueSetter?.call(textarea, suggestion);
+      const event = new Event('input', { bubbles: true });
+      textarea.dispatchEvent(event);
+      textarea.focus();
+      textarea.form?.requestSubmit();
+    }
+  };
+
   const selectedModelData = useMemo(() => {
     const model = models.find((m) => m.id === selectedModel);
     if (!model) return null;
@@ -184,6 +202,18 @@ export function ChatInput({
 
   return (
     <div className="w-full flex flex-col justify-end">
+      {suggestions.length > 0 && (
+        <Suggestions className="mb-2 w-full">
+          {suggestions.map((suggestion, index) => (
+            <Suggestion
+              key={index}
+              onClick={handleSuggestionClick}
+              suggestion={suggestion}
+              className='rounded-none'
+            />
+          ))}
+        </Suggestions>
+      )}
       {queue.length > 0 && (
         <Queue className="mb-1 sm:mb-2 mx-auto max-h-[120px] sm:max-h-[150px] w-full overflow-y-auto rounded-lg border bg-background">
           <QueueSection>
@@ -366,11 +396,11 @@ export function ChatInput({
           </PromptInputTools>
 
           <div className="flex items-center gap-2">
-            <PromptInputSubmit 
-              className="h-7! sm:h-8! rounded-none border border-terminal-border hover:bg-terminal-green hover:text-terminal-bg hover:border-terminal-green transition-colors disabled:opacity-50" 
-              disabled={disabled} 
-              status={status} 
-              onStop={onStop} 
+            <PromptInputSubmit
+              className="h-7! sm:h-8! rounded-none border border-terminal-border hover:bg-terminal-green hover:text-terminal-bg hover:border-terminal-green transition-colors disabled:opacity-50"
+              disabled={disabled}
+              status={status}
+              onStop={onStop}
             />
           </div>
         </PromptInputFooter>

@@ -41,8 +41,10 @@ interface Conversation {
   title: string;
   messages: Message[];
   checkpoints: Checkpoint[];
+  suggestions?: string[];
   updatedAt: number;
 }
+
 
 interface UIState {
   // Hydration state - tracks when persisted state is loaded from IndexedDB
@@ -72,6 +74,7 @@ interface UIState {
   deleteConversation: (id: string) => void;
   setActiveConversation: (id: string) => void;
   setConversationTitle: (id: string, title: string) => void;
+  setConversationSuggestions: (id: string, suggestions: string[]) => void;
 
   // Message actions (operate on active conversation)
   addMessage: (message: Message) => void;
@@ -179,6 +182,20 @@ export const useUIStore = create<UIState>()(
         const chat = { ...state.conversations[id] };
         chat.title = title;
         chat.updatedAt = Date.now();
+
+        return {
+          conversations: {
+            ...state.conversations,
+            [id]: chat
+          }
+        };
+      }),
+
+      setConversationSuggestions: (id, suggestions) => set((state) => {
+        if (!state.conversations[id]) return {};
+
+        const chat = { ...state.conversations[id] };
+        chat.suggestions = suggestions;
 
         return {
           conversations: {
@@ -509,9 +526,11 @@ export const useCreateConversation = () => useUIStore((s) => s.createConversatio
 export const useDeleteConversation = () => useUIStore((s) => s.deleteConversation);
 export const useSetActiveConversation = () => useUIStore((s) => s.setActiveConversation);
 export const useSetConversationTitle = () => useUIStore((s) => s.setConversationTitle);
+export const useSetConversationSuggestions = () => useUIStore((s) => s.setConversationSuggestions);
 
 const EMPTY_MESSAGES: Message[] = [];
 const EMPTY_CHECKPOINTS: Checkpoint[] = [];
+const EMPTY_SUGGESTIONS: string[] = [];
 
 export const useMessages = () => useUIStore(useShallow((s) => {
   const chat = s.activeConversationId ? s.conversations[s.activeConversationId] : null;
@@ -522,6 +541,11 @@ export const useCheckpoints = () => useUIStore((s) => {
   const chat = s.activeConversationId ? s.conversations[s.activeConversationId] : null;
   return chat ? (chat.checkpoints || EMPTY_CHECKPOINTS) : EMPTY_CHECKPOINTS;
 });
+
+export const useSuggestions = () => useUIStore(useShallow((s) => {
+  const chat = s.activeConversationId ? s.conversations[s.activeConversationId] : null;
+  return chat ? (chat.suggestions || EMPTY_SUGGESTIONS) : EMPTY_SUGGESTIONS;
+}));
 
 export const useAddMessage = () => useUIStore((s) => s.addMessage);
 export const useDeleteMessage = () => useUIStore((s) => s.deleteMessage);
@@ -574,6 +598,7 @@ export const useChatInterfaceState = () => useUIStore(useShallow((s) => {
     activeConversationId: s.activeConversationId,
     messages: activeChat?.messages ?? EMPTY_MESSAGES,
     checkpoints: activeChat?.checkpoints ?? EMPTY_CHECKPOINTS,
+    suggestions: activeChat?.suggestions ?? EMPTY_SUGGESTIONS,
     selectedModel: s.selectedModel,
     lastSyncedAt: s.lastSyncedAt,
     artifactsPanelOpen: s.artifactsPanelOpen,

@@ -7,6 +7,7 @@ import { UI_RESPONSE_GUIDE } from '@/lib/ui-response-guide';
 import { parseFiles } from '@/lib/file-parser';
 import { workspaceApi } from '@/api/workspace';
 import { generateConversationTitle } from '@/lib/title-generator';
+import { generateConversationSuggestions } from '@/lib/suggestion-generator';
 import type { ToolUIPart } from 'ai';
 
 const API_BASE_URL = '/api';
@@ -479,6 +480,11 @@ export function useSendMessage() {
       }
     }
 
+    // Clear suggestions
+    if (activeConversationId) {
+      useUIStore.getState().setConversationSuggestions(activeConversationId, []);
+    }
+
     // Prepare history
     let currentMessages = conversationHistory
       .filter(m => !m.streaming)
@@ -655,6 +661,35 @@ export function useSendMessage() {
       } catch (error) {
         console.error('[Chat] Title generation failed:', error);
       }
+
+      // Generate suggestions
+      try {
+        const currentConvId = useUIStore.getState().activeConversationId;
+        if (currentConvId) {
+          const conversation = useUIStore.getState().conversations[currentConvId];
+          const messages = conversation?.messages || [];
+          // Need at least a few messages for context
+          if (messages.length >= 2) {
+            const assistantMsg = conversation?.messages.find(m => m.id === assistantMessageId);
+            if (assistantMsg && !assistantMsg.streaming) {
+              // Prepare messages in format expected by generator
+              const history = messages.map(m => ({
+                role: m.role,
+                content: typeof m.content === 'string' ? m.content : 'Image/Attachment' // Simplify for suggestion generator
+              }));
+
+              await generateConversationSuggestions(
+                currentConvId,
+                model,
+                history,
+                apiKey
+              );
+            }
+          }
+        }
+      } catch (error) {
+        console.error('[Chat] Suggestion generation failed:', error);
+      }
     }, 100);
   };
 
@@ -750,6 +785,34 @@ export function useSendMessage() {
     addMessage(assistantMessage);
 
     await streamResponse(apiMessages, model, assistantMessageId);
+
+    // Generate suggestions after regeneration
+    setTimeout(async () => {
+      try {
+        const currentConvId = useUIStore.getState().activeConversationId;
+        if (currentConvId) {
+          const conversation = useUIStore.getState().conversations[currentConvId];
+          const messages = conversation?.messages || [];
+
+          if (messages.length >= 2) {
+            const history = messages.map(m => ({
+              role: m.role,
+              content: typeof m.content === 'string' ? m.content : 'Image/Attachment'
+            }));
+
+            await generateConversationSuggestions(
+              currentConvId,
+              model,
+              history,
+              // apiKey might be null if using session, store has it
+              useUIStore.getState().apiKey
+            );
+          }
+        }
+      } catch (error) {
+        console.error('[Chat] Suggestion generation failed:', error);
+      }
+    }, 100);
   };
 
   return { sendMessage, regenerate, isStreaming, stopStreaming };

@@ -195,19 +195,61 @@ export function ChatSidebar({ className, isOpen = true, onClose, isMobile = fals
             </div>
           ) : (
             displayedChats.map((chat: any) => (
-              <div key={chat.id} className="relative group">
+              <div key={chat.id} className="relative group mb-0.5">
                 <Button
                   variant={activeId === chat.id ? "secondary" : "ghost"}
                   size="sm"
                   className={cn(
-                    "w-full justify-start text-left text-xs font-normal h-9 pr-9 mb-0.5 overflow-hidden",
+                    "w-full justify-start text-left text-xs font-normal h-9 overflow-hidden pr-2",
                     activeId === chat.id && "bg-terminal-border text-terminal-text shadow-sm"
                   )}
                   onClick={() => handleSelectChat(chat.id)}
                 >
                   <MessageSquare className="mr-2 size-3.5 shrink-0 opacity-70" />
-                  <span className="w-0 flex-1 truncate">{chat.title || "New Chat"}</span>
+                  <span className={cn(
+                    "w-0 flex-1 truncate transition-all duration-200",
+                    "group-hover:mr-6"
+                  )}>
+                    {chat.title || "New Chat"}
+                  </span>
                 </Button>
+
+                {/* 3-dot Menu - Absolute positioned */}
+                <div className={cn(
+                  "absolute right-1 top-1/2 -translate-y-1/2",
+                  isMobile || openMenuId === chat.id ? "opacity-100" : "opacity-0 group-hover:opacity-100 transition-opacity"
+                )}>
+                  <Popover open={openMenuId === chat.id} onOpenChange={(open) => setOpenMenuId(open ? chat.id : null)}>
+                    <PopoverTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        size="icon-sm"
+                        className="w-6 h-6 text-muted-foreground hover:text-foreground hover:bg-terminal-surface"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <MoreHorizontal className="size-3.5" />
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent
+                      className="w-36 p-1 bg-terminal-surface border-terminal-border"
+                      align="end"
+                      side="right"
+                    >
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="w-full justify-start text-xs font-normal text-terminal-red hover:bg-terminal-red/10 hover:text-terminal-red"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setDeleteId(chat.id);
+                        }}
+                      >
+                        <Trash2 className="mr-2 size-3.5" />
+                        Delete
+                      </Button>
+                    </PopoverContent>
+                  </Popover>
+                </div>
 
                 {/* Search Matches */}
                 {chat.matches && chat.matches.length > 0 && (
@@ -232,41 +274,6 @@ export function ChatSidebar({ className, isOpen = true, onClose, isMobile = fals
                     )}
                   </div>
                 )}
-
-                {/* 3-dot Menu */}
-                <Popover open={openMenuId === chat.id} onOpenChange={(open) => setOpenMenuId(open ? chat.id : null)}>
-                  <PopoverTrigger asChild>
-                    <Button
-                      variant="ghost"
-                      size="icon-sm"
-                      className={cn(
-                        "absolute top-1.5 right-1 w-6 h-6 transition-opacity hover:bg-terminal-surface",
-                        isMobile ? "opacity-100" : "opacity-0 group-hover:opacity-100"
-                      )}
-                      onClick={(e) => e.stopPropagation()}
-                    >
-                      <MoreHorizontal className="size-3.5" />
-                    </Button>
-                  </PopoverTrigger>
-                  <PopoverContent
-                    className="w-36 p-1 bg-terminal-surface border-terminal-border"
-                    align="end"
-                    side="right"
-                  >
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="w-full justify-start text-xs font-normal text-terminal-red hover:bg-terminal-red/10 hover:text-terminal-red"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setDeleteId(chat.id);
-                      }}
-                    >
-                      <Trash2 className="mr-2 size-3.5" />
-                      Delete
-                    </Button>
-                  </PopoverContent>
-                </Popover>
               </div>
             ))
           )}
