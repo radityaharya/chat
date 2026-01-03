@@ -13,7 +13,7 @@ import { useMobileDetect } from '@/hooks/useMobileDetect';
 import { ChatMessage } from '@/components/chat/ChatMessage';
 import { ChatInput, type QueueMessage } from '@/components/chat/ChatInput';
 import { ChatSidebar } from '@/components/chat/ChatSidebar';
-import { Loader } from '@/components/ai-elements/loader';
+import { ChatLoadingSkeleton } from './ChatLoadingSkeleton';
 import {
   Conversation,
   ConversationContent,
@@ -296,12 +296,8 @@ export function ChatInterface() {
     }
   };
 
-  if (isCheckingAuth || (!apiKey && !authStatus)) {
-    return (
-      <div className="min-h-screen bg-terminal-bg flex items-center justify-center">
-        <Loader size={32} />
-      </div>
-    );
+  if (!apiKey && !authStatus?.authenticated) {
+    return <ChatLoadingSkeleton />;
   }
 
   return (

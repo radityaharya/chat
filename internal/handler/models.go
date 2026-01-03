@@ -32,7 +32,7 @@ func getBackendAPIKey(backend model.BackendConfig, logger *zap.Logger) string {
 	}
 
 	if cm, exists := proxy.CredentialManagers[backend.Name]; exists {
-		if key, err := cm.GetNextKey(); err == nil {
+		if key, err := cm.GetNextKey(""); err == nil {
 			logger.Debug("Using API key from credential manager for models request",
 				zap.String("backend", backend.Name))
 			return key

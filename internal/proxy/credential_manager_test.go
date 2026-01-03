@@ -45,7 +45,7 @@ func TestGetNextKey_RoundRobin(t *testing.T) {
 	expectedOrder := []string{"key1", "key2", "key3", "key1", "key2", "key3"}
 
 	for i, expected := range expectedOrder {
-		key, err := cm.GetNextKey()
+		key, err := cm.GetNextKey("")
 		if err != nil {
 			t.Errorf("Iteration %d: Expected no error, got %v", i, err)
 		}
@@ -60,20 +60,20 @@ func TestMarkKeyFailed(t *testing.T) {
 	keys := []string{"key1", "key2", "key3"}
 	cm, _ := NewCredentialManager(keys, 1*time.Second)
 
-	// Mark key1 as failed
-	cm.MarkKeyFailed("key1")
+	// Mark key1 as failed globally
+	cm.MarkKeyFailed("key1", "")
 
-	// Check that key1 is not available
-	if cm.IsKeyAvailable("key1") {
+	// Check that key1 is not available globally
+	if cm.IsKeyAvailable("key1", "") {
 		t.Error("Expected key1 to be unavailable after marking as failed")
 	}
 
 	// Check that other keys are still available
-	if !cm.IsKeyAvailable("key2") {
+	if !cm.IsKeyAvailable("key2", "") {
 		t.Error("Expected key2 to be available")
 	}
 
-	if !cm.IsKeyAvailable("key3") {
+	if !cm.IsKeyAvailable("key3", "") {
 		t.Error("Expected key3 to be available")
 	}
 }
@@ -82,11 +82,11 @@ func TestGetNextKey_SkipsFailedKeys(t *testing.T) {
 	keys := []string{"key1", "key2", "key3"}
 	cm, _ := NewCredentialManager(keys, 2*time.Second)
 
-	// Mark key1 as failed
-	cm.MarkKeyFailed("key1")
+	// Mark key1 as failed globally
+	cm.MarkKeyFailed("key1", "")
 
 	// Next key should be key2 (skipping key1)
-	key, err := cm.GetNextKey()
+	key, err := cm.GetNextKey("")
 	if err != nil {
 		t.Errorf("Expected no error, got %v", err)
 	}
@@ -96,7 +96,7 @@ func TestGetNextKey_SkipsFailedKeys(t *testing.T) {
 	}
 
 	// Next should be key3
-	key, err = cm.GetNextKey()
+	key, err = cm.GetNextKey("")
 	if err != nil {
 		t.Errorf("Expected no error, got %v", err)
 	}
@@ -106,7 +106,7 @@ func TestGetNextKey_SkipsFailedKeys(t *testing.T) {
 	}
 
 	// Next should be key2 again (still skipping key1)
-	key, err = cm.GetNextKey()
+	key, err = cm.GetNextKey("")
 	if err != nil {
 		t.Errorf("Expected no error, got %v", err)
 	}
@@ -121,12 +121,12 @@ func TestGetNextKey_AllKeysFailed(t *testing.T) {
 	cm, _ := NewCredentialManager(keys, 5*time.Second)
 
 	// Mark all keys as failed
-	cm.MarkKeyFailed("key1")
-	cm.MarkKeyFailed("key2")
-	cm.MarkKeyFailed("key3")
+	cm.MarkKeyFailed("key1", "")
+	cm.MarkKeyFailed("key2", "")
+	cm.MarkKeyFailed("key3", "")
 
 	// Should return error when all keys are unavailable
-	key, err := cm.GetNextKey()
+	key, err := cm.GetNextKey("")
 	if err == nil {
 		t.Error("Expected error when all keys are failed, got nil")
 	}
@@ -147,10 +147,10 @@ func TestCleanupExpiredTimeouts(t *testing.T) {
 	cm, _ := NewCredentialManager(keys, 100*time.Millisecond)
 
 	// Mark key1 as failed
-	cm.MarkKeyFailed("key1")
+	cm.MarkKeyFailed("key1", "")
 
 	// Verify key1 is unavailable
-	if cm.IsKeyAvailable("key1") {
+	if cm.IsKeyAvailable("key1", "") {
 		t.Error("Expected key1 to be unavailable immediately after marking as failed")
 	}
 
@@ -158,12 +158,12 @@ func TestCleanupExpiredTimeouts(t *testing.T) {
 	time.Sleep(150 * time.Millisecond)
 
 	// Verify key1 is available again
-	if !cm.IsKeyAvailable("key1") {
+	if !cm.IsKeyAvailable("key1", "") {
 		t.Error("Expected key1 to be available after timeout expired")
 	}
 
 	// Should be able to get key1 again
-	key, err := cm.GetNextKey()
+	key, err := cm.GetNextKey("")
 	if err != nil {
 		t.Errorf("Expected no error after timeout, got %v", err)
 	}
@@ -183,8 +183,8 @@ func TestGetAvailableKeyCount(t *testing.T) {
 	}
 
 	// Mark two keys as failed
-	cm.MarkKeyFailed("key1")
-	cm.MarkKeyFailed("key3")
+	cm.MarkKeyFailed("key1", "")
+	cm.MarkKeyFailed("key3", "")
 
 	// Should have 2 available keys
 	if cm.GetAvailableKeyCount() != 2 {
@@ -203,10 +203,10 @@ func TestConcurrentAccess(t *testing.T) {
 	for i := 0; i < 10; i++ {
 		go func() {
 			for j := 0; j < 100; j++ {
-				cm.GetNextKey()
-				cm.IsKeyAvailable("key1")
+				cm.GetNextKey("")
+				cm.IsKeyAvailable("key1", "")
 				if j%10 == 0 {
-					cm.MarkKeyFailed("key2")
+					cm.MarkKeyFailed("key2", "")
 				}
 			}
 			done <- true
@@ -220,4 +220,27 @@ func TestConcurrentAccess(t *testing.T) {
 
 	// If we get here without deadlock or panic, the test passes
 	t.Log("Concurrent access test completed successfully")
+}
+
+func TestModelSpecificFailure(t *testing.T) {
+	keys := []string{"key1"}
+	cm, _ := NewCredentialManager(keys, 1*time.Second)
+
+	// Mark key1 failed for model "gpt-4"
+	cm.MarkKeyFailed("key1", "gpt-4")
+
+	// Verify key1 is unavailable for gpt-4
+	if cm.IsKeyAvailable("key1", "gpt-4") {
+		t.Error("Expected key1 to be unavailable for gpt-4")
+	}
+
+	// Verify key1 is still available for "gpt-3.5-turbo"
+	if !cm.IsKeyAvailable("key1", "gpt-3.5-turbo") {
+		t.Error("Expected key1 to be available for gpt-3.5-turbo")
+	}
+
+	// Verify key1 is still available globally (no model specified)
+	if !cm.IsKeyAvailable("key1", "") {
+		t.Error("Expected key1 to be available globally")
+	}
 }

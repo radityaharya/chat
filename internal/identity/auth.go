@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"net/http"
+	"strings"
 	"time"
 
 	"golang.org/x/crypto/bcrypt"
@@ -265,8 +266,18 @@ func (am *AuthManager) CheckInitialSetup(w http.ResponseWriter, r *http.Request)
 
 // GetSession retrieves the current session from cookie or API key
 func (am *AuthManager) GetSession(r *http.Request) (*Session, bool) {
-	// Check for API key first
-	if apiKey := r.Header.Get("X-API-Key"); apiKey != "" {
+	// Check for API key in X-API-Key header
+	apiKey := r.Header.Get("X-API-Key")
+
+	// If not found, check Authorization header (Bearer token)
+	if apiKey == "" {
+		authHeader := r.Header.Get("Authorization")
+		if strings.HasPrefix(authHeader, "Bearer ") {
+			apiKey = strings.TrimPrefix(authHeader, "Bearer ")
+		}
+	}
+
+	if apiKey != "" {
 		keyHash := hashAPIKey(apiKey)
 		key, err := am.db.GetAPIKeyByHash(keyHash)
 		if err == nil && key != nil {

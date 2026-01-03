@@ -2,6 +2,7 @@ package proxy
 
 import (
 	"errors"
+	"fmt"
 	"sync"
 	"time"
 )
@@ -14,9 +15,10 @@ const (
 type CredentialManager struct {
 	keys         []string
 	currentIndex int
-	failedKeys   map[string]time.Time
-	timeoutDur   time.Duration
-	mu           sync.Mutex
+	// failedKeyModels maps "key|model" -> expiration time
+	failedKeyModels map[string]time.Time
+	timeoutDur      time.Duration
+	mu              sync.Mutex
 }
 
 func NewCredentialManager(keys []string, timeoutDuration time.Duration) (*CredentialManager, error) {
@@ -25,14 +27,14 @@ func NewCredentialManager(keys []string, timeoutDuration time.Duration) (*Creden
 	}
 
 	return &CredentialManager{
-		keys:         keys,
-		currentIndex: 0,
-		failedKeys:   make(map[string]time.Time),
-		timeoutDur:   timeoutDuration,
+		keys:            keys,
+		currentIndex:    0,
+		failedKeyModels: make(map[string]time.Time),
+		timeoutDur:      timeoutDuration,
 	}, nil
 }
 
-func (cm *CredentialManager) GetNextKey() (string, error) {
+func (cm *CredentialManager) GetNextKey(model string) (string, error) {
 	cm.mu.Lock()
 	defer cm.mu.Unlock()
 
@@ -45,7 +47,7 @@ func (cm *CredentialManager) GetNextKey() (string, error) {
 		key := cm.keys[cm.currentIndex]
 		cm.currentIndex = (cm.currentIndex + 1) % len(cm.keys)
 
-		if cm.isKeyAvailableUnlocked(key) {
+		if cm.isKeyAvailableUnlocked(key, model) {
 			return key, nil
 		}
 
@@ -59,34 +61,51 @@ func (cm *CredentialManager) GetNextKey() (string, error) {
 	return "", errors.New(errAllKeysUnavail)
 }
 
-func (cm *CredentialManager) MarkKeyFailed(key string) {
+func (cm *CredentialManager) MarkKeyFailed(key, model string) {
 	cm.mu.Lock()
 	defer cm.mu.Unlock()
 
-	cm.failedKeys[key] = time.Now().Add(cm.timeoutDur)
-}
-
-func (cm *CredentialManager) IsKeyAvailable(key string) bool {
-	cm.mu.Lock()
-	defer cm.mu.Unlock()
-
-	return cm.isKeyAvailableUnlocked(key)
-}
-
-func (cm *CredentialManager) isKeyAvailableUnlocked(key string) bool {
-	timeout, exists := cm.failedKeys[key]
-	if !exists {
-		return true
+	compositeKey := key
+	if model != "" {
+		compositeKey = fmt.Sprintf("%s|%s", key, model)
 	}
 
-	return time.Now().After(timeout)
+	cm.failedKeyModels[compositeKey] = time.Now().Add(cm.timeoutDur)
+}
+
+func (cm *CredentialManager) IsKeyAvailable(key, model string) bool {
+	cm.mu.Lock()
+	defer cm.mu.Unlock()
+
+	return cm.isKeyAvailableUnlocked(key, model)
+}
+
+func (cm *CredentialManager) isKeyAvailableUnlocked(key, model string) bool {
+	// Check specific model failure
+	if model != "" {
+		compositeKey := fmt.Sprintf("%s|%s", key, model)
+		if timeout, exists := cm.failedKeyModels[compositeKey]; exists {
+			if time.Now().Before(timeout) {
+				return false
+			}
+		}
+	}
+
+	// Check global key failure (stored with just key as compositeKey)
+	if timeout, exists := cm.failedKeyModels[key]; exists {
+		if time.Now().Before(timeout) {
+			return false
+		}
+	}
+
+	return true
 }
 
 func (cm *CredentialManager) cleanupExpiredTimeouts() {
 	now := time.Now()
-	for key, timeout := range cm.failedKeys {
+	for k, timeout := range cm.failedKeyModels {
 		if now.After(timeout) {
-			delete(cm.failedKeys, key)
+			delete(cm.failedKeyModels, k)
 		}
 	}
 }
@@ -106,7 +125,10 @@ func (cm *CredentialManager) GetAvailableKeyCount() int {
 
 	available := 0
 	for _, key := range cm.keys {
-		if cm.isKeyAvailableUnlocked(key) {
+		// We can't really count "available" without a model context,
+		// but historically this meant "globally available".
+		// We'll check if it's available for "no specific model".
+		if cm.isKeyAvailableUnlocked(key, "") {
 			available++
 		}
 	}

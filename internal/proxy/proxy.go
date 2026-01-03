@@ -203,7 +203,7 @@ func shouldRetryWithoutTools(resp *http.Response, respBody string) bool {
 	if resp == nil {
 		return false
 	}
-	
+
 	// Check for OpenRouter-style tool error (404 with specific message)
 	if resp.StatusCode == http.StatusNotFound {
 		if strings.Contains(respBody, "No endpoints found that support tool use") ||
@@ -212,7 +212,7 @@ func shouldRetryWithoutTools(resp *http.Response, respBody string) bool {
 			return true
 		}
 	}
-	
+
 	// Check for other common tool-related errors
 	if resp.StatusCode == http.StatusBadRequest {
 		if strings.Contains(respBody, "tool") ||
@@ -220,7 +220,7 @@ func shouldRetryWithoutTools(resp *http.Response, respBody string) bool {
 			return true
 		}
 	}
-	
+
 	return false
 }
 
@@ -229,27 +229,27 @@ func removeToolsAndUpdatePrompt(bodyBytes []byte, logger *zap.Logger) ([]byte, e
 	if err := json.Unmarshal(bodyBytes, &chatReq); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal request: %w", err)
 	}
-	
+
 	// Check if tools parameter exists
 	if _, hasTools := chatReq["tools"]; !hasTools {
 		// No tools to remove, return original
 		return bodyBytes, nil
 	}
-	
+
 	// Remove tools parameter
 	delete(chatReq, "tools")
 	delete(chatReq, "tool_choice")
 	logger.Info("Removed tools and tool_choice parameters from request")
-	
+
 	// Inject message into system prompt
 	messages, ok := chatReq["messages"].([]interface{})
 	if !ok {
 		// If messages is not in expected format, just remove tools and continue
 		return json.Marshal(chatReq)
 	}
-	
+
 	toolNotSupportedMsg := "Note: This model does not support tool/function calling. Please answer the user's question directly without attempting to use any tools or functions."
-	
+
 	// Look for existing system message and append to it
 	foundSystem := false
 	for i, msg := range messages {
@@ -265,7 +265,7 @@ func removeToolsAndUpdatePrompt(bodyBytes []byte, logger *zap.Logger) ([]byte, e
 			}
 		}
 	}
-	
+
 	// If no system message found, prepend one
 	if !foundSystem {
 		systemMsg := map[string]interface{}{
@@ -275,9 +275,9 @@ func removeToolsAndUpdatePrompt(bodyBytes []byte, logger *zap.Logger) ([]byte, e
 		messages = append([]interface{}{systemMsg}, messages...)
 		logger.Info("Prepended new system message about tool support")
 	}
-	
+
 	chatReq["messages"] = messages
-	
+
 	return json.Marshal(chatReq)
 }
 
@@ -327,10 +327,10 @@ func (t *debugTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 		t.logger.Info("Detected tool-use error, retrying without tools",
 			zap.String("backend", t.backend),
 			zap.Int("statusCode", resp.StatusCode))
-		
+
 		// Close the error response
 		closeResponseBody(resp)
-		
+
 		// Modify request to remove tools and update system prompt
 		modifiedBodyBytes, err := removeToolsAndUpdatePrompt(bodyBytes, t.logger)
 		if err != nil {
@@ -341,16 +341,16 @@ func (t *debugTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 			resp.Body = io.NopCloser(bytes.NewBuffer([]byte(respBodyStr)))
 			return resp, nil
 		}
-		
+
 		// Restore request body with modified content
 		restoreRequestBody(req, modifiedBodyBytes)
-		
+
 		// Retry the request
 		resp, err = t.transport.RoundTrip(req)
 		if err != nil {
 			return nil, err
 		}
-		
+
 		// Capture the new response
 		if resp.Body != nil {
 			resp.Body, respBodyStr = utils.DrainAndCapture(resp.Body, isStreaming)
@@ -388,7 +388,17 @@ func closeResponseBody(resp *http.Response) {
 	}
 }
 
-func (t *debugTransport) handleRetryableResponse(resp *http.Response, currentKey string, cm *CredentialManager, maxAttempts, attempt int) (*http.Response, bool) {
+func extractModelFromRequest(bodyBytes []byte) string {
+	var body struct {
+		Model string `json:"model"`
+	}
+	if err := json.Unmarshal(bodyBytes, &body); err != nil {
+		return ""
+	}
+	return body.Model
+}
+
+func (t *debugTransport) handleRetryableResponse(resp *http.Response, currentKey, model string, cm *CredentialManager, maxAttempts, attempt int) (*http.Response, bool) {
 	if !retryableStatuses[resp.StatusCode] {
 		return resp, false
 	}
@@ -397,36 +407,40 @@ func (t *debugTransport) handleRetryableResponse(resp *http.Response, currentKey
 		zap.String("backend", t.backend),
 		zap.Int("statusCode", resp.StatusCode),
 		zap.Int("attempt", attempt+1),
-		zap.Int("maxAttempts", maxAttempts))
+		zap.Int("maxAttempts", maxAttempts),
+		zap.String("model", model))
 
 	if currentKey != "" {
-		cm.MarkKeyFailed(currentKey)
+		cm.MarkKeyFailed(currentKey, model)
 		t.logger.Info("Marked API key as failed due to error response",
 			zap.String("backend", t.backend),
 			zap.Int("statusCode", resp.StatusCode),
-			zap.String("key", utils.RedactAuthorization("Bearer "+currentKey)))
+			zap.String("key", utils.RedactAuthorization("Bearer "+currentKey)),
+			zap.String("model", model))
 	}
 
 	closeResponseBody(resp)
 	return resp, true
 }
 
-func (t *debugTransport) handleTransportError(err error, currentKey string, cm *CredentialManager) {
+func (t *debugTransport) handleTransportError(err error, currentKey, model string, cm *CredentialManager) {
 	if currentKey != "" {
-		cm.MarkKeyFailed(currentKey)
+		cm.MarkKeyFailed(currentKey, model)
 		t.logger.Warn("Marked API key as failed due to transport error",
 			zap.String("backend", t.backend),
 			zap.Error(err),
-			zap.String("key", utils.RedactAuthorization("Bearer "+currentKey)))
+			zap.String("key", utils.RedactAuthorization("Bearer "+currentKey)),
+			zap.String("model", model))
 	}
 }
 
-func (t *debugTransport) getNextKeyForRetry(cm *CredentialManager, req *http.Request, attempt int) bool {
-	newKey, err := cm.GetNextKey()
+func (t *debugTransport) getNextKeyForRetry(cm *CredentialManager, req *http.Request, attempt int, model string) bool {
+	newKey, err := cm.GetNextKey(model)
 	if err != nil {
 		t.logger.Error("No more API keys available for retry",
 			zap.String("backend", t.backend),
-			zap.Error(err))
+			zap.Error(err),
+			zap.String("model", model))
 		return false
 	}
 
@@ -434,7 +448,8 @@ func (t *debugTransport) getNextKeyForRetry(cm *CredentialManager, req *http.Req
 	t.logger.Info("Retrying request with different API key",
 		zap.String("backend", t.backend),
 		zap.Int("attempt", attempt+2),
-		zap.String("newKey", utils.RedactAuthorization("Bearer "+newKey)))
+		zap.String("newKey", utils.RedactAuthorization("Bearer "+newKey)),
+		zap.String("model", model))
 	return true
 }
 
@@ -450,6 +465,8 @@ func (t *debugTransport) executeWithRetry(req *http.Request, bodyBytes []byte) (
 		maxAttempts = maxRetryAttempts
 	}
 
+	modelName := extractModelFromRequest(bodyBytes)
+
 	var lastErr error
 	var lastResp *http.Response
 
@@ -461,17 +478,17 @@ func (t *debugTransport) executeWithRetry(req *http.Request, bodyBytes []byte) (
 
 		if err == nil && resp != nil {
 			var shouldRetry bool
-			lastResp, shouldRetry = t.handleRetryableResponse(resp, currentKey, cm, maxAttempts, attempt)
+			lastResp, shouldRetry = t.handleRetryableResponse(resp, currentKey, modelName, cm, maxAttempts, attempt)
 			if !shouldRetry {
 				return resp, nil
 			}
 		} else {
 			lastErr = err
-			t.handleTransportError(err, currentKey, cm)
+			t.handleTransportError(err, currentKey, modelName, cm)
 		}
 
 		if attempt < maxAttempts-1 {
-			if !t.getNextKeyForRetry(cm, req, attempt) {
+			if !t.getNextKeyForRetry(cm, req, attempt, modelName) {
 				break
 			}
 		}
@@ -533,13 +550,13 @@ func setProxyHeaders(req *http.Request, targetHost, originalHost, clientIP strin
 	}
 }
 
-func getAPIKeyFromCredentialManager(backend model.BackendConfig, logger *zap.Logger) string {
+func getAPIKeyFromCredentialManager(backend model.BackendConfig, logger *zap.Logger, modelName string) string {
 	cm, exists := CredentialManagers[backend.Name]
 	if !exists {
 		return ""
 	}
 
-	key, err := cm.GetNextKey()
+	key, err := cm.GetNextKey(modelName)
 	if err != nil {
 		logger.Error("Failed to get API key from credential manager",
 			zap.String("backend", backend.Name),
@@ -573,8 +590,8 @@ func getSingleAPIKey(backend model.BackendConfig, logger *zap.Logger) string {
 	return ""
 }
 
-func setAuthorizationHeader(req *http.Request, backend model.BackendConfig, logger *zap.Logger) {
-	apiKey := getAPIKeyFromCredentialManager(backend, logger)
+func setAuthorizationHeader(req *http.Request, backend model.BackendConfig, logger *zap.Logger, modelName string) {
+	apiKey := getAPIKeyFromCredentialManager(backend, logger, modelName)
 	if apiKey == "" {
 		apiKey = getSingleAPIKey(backend, logger)
 	}
@@ -605,8 +622,9 @@ func makeDirector(urlParsed *url.URL, backend model.BackendConfig, logger *zap.L
 		originalHost := req.Host
 		originalPath := req.URL.Path
 
+		var bodyBytes []byte
 		if req.Body != nil && req.Method != "GET" {
-			bodyBytes, _ := io.ReadAll(req.Body)
+			bodyBytes, _ = io.ReadAll(req.Body)
 			req.Body = io.NopCloser(bytes.NewBuffer(bodyBytes))
 		}
 
@@ -624,8 +642,10 @@ func makeDirector(urlParsed *url.URL, backend model.BackendConfig, logger *zap.L
 		clientIP := extractClientIP(req.RemoteAddr)
 		setProxyHeaders(req, urlParsed.Host, originalHost, clientIP)
 
+		modelName := extractModelFromRequest(bodyBytes)
+
 		if backend.RequireAPIKey {
-			setAuthorizationHeader(req, backend, logger)
+			setAuthorizationHeader(req, backend, logger, modelName)
 		} else {
 			req.Header.Del("Authorization")
 			logger.Info("Removed Authorization header for backend", zap.String("backend", backend.Name))
