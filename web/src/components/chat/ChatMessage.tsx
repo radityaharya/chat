@@ -1,5 +1,5 @@
 
-import { useState, useMemo, useCallback, memo, useDeferredValue } from 'react';
+import { useState, useMemo, useCallback, memo, useDeferredValue, useEffect, useRef } from 'react';
 import {
   Message,
   MessageAttachment,
@@ -42,6 +42,12 @@ import { cn } from '@/lib/utils';
 import { parseUIResponses } from '@/lib/ui-response-parser';
 import { splitContentWithArtifacts, type CodeArtifact } from '@/lib/artifacts';
 import { MessageArtifact } from './MessageArtifact';
+
+import { useSetQuotedText } from '@/store';
+import { Quote } from 'lucide-react';
+import { createPortal } from 'react-dom';
+import { Button } from '../ui/button';
+
 
 interface ChatMessageProps {
   message: StoreMessage;
@@ -148,8 +154,59 @@ function splitContentWithUIResponses(content: string) {
 export const ChatMessage = memo(function ChatMessage({ message, onRegenerate, onDelete, onCheckpoint, onFork }: ChatMessageProps) {
   // Direct store access - slightly more efficient than hook wrapper
   const uiResponseEnabled = useUIStore((s) => s.uiResponseEnabled);
+  const setQuotedText = useSetQuotedText();
 
   const [copied, setCopied] = useState(false);
+  const [selection, setSelection] = useState<{ text: string; top: number; left: number } | null>(null);
+  const selectionRef = useRef<HTMLDivElement>(null);
+
+
+  const handleMouseUp = useCallback(() => {
+    const sel = window.getSelection();
+    if (sel && sel.toString().trim().length > 0 && !sel.isCollapsed) {
+      const range = sel.getRangeAt(0);
+      const rect = range.getBoundingClientRect();
+
+      // Ensure we don't show it if the selection is within another interactive element if possible
+      // But for now, simple is better.
+      setSelection({
+        text: sel.toString().trim(),
+        top: rect.top + window.scrollY,
+        left: rect.left + rect.width / 2 + window.scrollX
+      });
+    } else {
+      setSelection(null);
+    }
+  }, []);
+
+  const handleAskAssistant = useCallback(() => {
+    if (selection) {
+      setQuotedText(selection.text);
+      setSelection(null);
+      window.getSelection()?.removeAllRanges();
+    }
+  }, [selection, setQuotedText]);
+
+  // Close selection on scroll or window click
+  useEffect(() => {
+    const handleClose = (e: Event) => {
+      // If the click is inside the selection menu, don't close it
+      if (selectionRef.current && e.target instanceof Node && selectionRef.current.contains(e.target)) {
+        return;
+      }
+      setSelection(null);
+    };
+
+    window.addEventListener('scroll', handleClose, { capture: true });
+    window.addEventListener('resize', handleClose);
+    window.addEventListener('mousedown', handleClose);
+    return () => {
+      window.removeEventListener('scroll', handleClose, { capture: true });
+      window.removeEventListener('resize', handleClose);
+      window.removeEventListener('mousedown', handleClose);
+    };
+  }, []);
+
 
   // OPTIMIZATION: Memoize expensive parsing operations
   const parsed = useMemo(() => {
@@ -196,8 +253,10 @@ export const ChatMessage = memo(function ChatMessage({ message, onRegenerate, on
       from={message.role}
       className="group/message"
       data-streaming={message.streaming ? "true" : undefined}
+      onMouseUp={handleMouseUp}
     >
       <MessageContent>
+
         {hasThinking && (
           <Reasoning isStreaming={isStreamingThought}>
             <ReasoningTrigger />
@@ -371,9 +430,29 @@ export const ChatMessage = memo(function ChatMessage({ message, onRegenerate, on
           )}
         </MessageActions>
       )}
+
+      {selection && createPortal(
+        <div
+          ref={selectionRef}
+          className="fixed z-100 -translate-x-1/2 -translate-y-[calc(100%+8px)] animate-in fade-in zoom-in duration-200"
+          style={{ top: selection.top - window.scrollY, left: selection.left - window.scrollX }}
+        >
+
+          <Button
+            size="sm"
+            onClick={handleAskAssistant}
+            className="bg-terminal-surface border border-terminal-border text-terminal-text hover:bg-terminal-green hover:text-terminal-bg rounded-none shadow-xl flex items-center gap-2 h-8 px-3 font-mono text-xs whitespace-nowrap"
+          >
+            <Quote className="size-3" />
+            Ask Assistant
+          </Button>
+        </div>,
+        document.body
+      )}
     </Message>
   );
 }, (prevProps, nextProps) => {
+
   // Custom comparison for optimal memoization
   // Only re-render when these specific things change:
 

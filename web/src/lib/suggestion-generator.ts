@@ -4,31 +4,35 @@ import { useUIStore } from '@/store';
 const API_BASE_URL = '/api';
 
 // Prompt for generating conversation suggestions
-const SUGGESTION_GENERATION_PROMPT = `You are a suggestion generator. 
-Based on the conversation history, generate 3-4 concise, relevant follow-up questions or actions the user might want to take next.
+const SUGGESTION_GENERATION_PROMPT = `Generate suggestions in JSON format.
+You are a suggestion generator. 
+Based on the conversation history, generate 3-4 concise, relevant follow-up questions or actions in json format.
 These should be natural continuations of the conversation.
 Keep them short (under 10 words).
-Ensure they are diverse (e.g., one asking for clarification, one asking for more detail, one changing direction slightly).`;
+Ensure they are diverse.
+The output must be a JSON object matching the provided schema.`;
 
 const SUGGESTION_SCHEMA = {
   type: "json_schema",
-  name: "chat_suggestions",
-  strict: true,
-  schema: {
-    type: "object",
-    properties: {
-      suggestions: {
-        type: "array",
-        items: {
-          type: "string",
-          description: "A short follow-up question or action suggestion"
-        },
-        minItems: 3,
-        maxItems: 4
-      }
-    },
-    required: ["suggestions"],
-    additionalProperties: false
+  json_schema: {
+    name: "chat_suggestions",
+    strict: true,
+    schema: {
+      type: "object",
+      properties: {
+        suggestions: {
+          type: "array",
+          items: {
+            type: "string",
+            description: "A short follow-up question or action suggestion"
+          },
+          minItems: 3,
+          maxItems: 4
+        }
+      },
+      required: ["suggestions"],
+      additionalProperties: false
+    }
   }
 };
 
@@ -56,7 +60,11 @@ export async function generateConversationSuggestions(
         model, // Use the same model as the conversation, or a cheap/fast one if preferred (e.g., gpt-4o-mini)
         messages: [
           { role: 'system', content: SUGGESTION_GENERATION_PROMPT },
-          ...relevantMessages
+          ...relevantMessages.map((m, i) =>
+            i === relevantMessages.length - 1
+              ? { ...m, content: m.content + "\n\n(Respond in JSON format)" }
+              : m
+          )
         ],
         stream: false,
         max_tokens: 200,

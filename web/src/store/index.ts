@@ -112,6 +112,10 @@ interface UIState {
   setUIResponseEnabled: (enabled: boolean) => void;
   toggleUIResponseEnabled: () => void;
 
+  // Quoted text for reference
+  quotedText: string | null;
+  setQuotedText: (text: string | null) => void;
+
   // Config actions
   // fetchConfig removed, handled by hook
 }
@@ -474,6 +478,10 @@ export const useUIStore = create<UIState>()(
       uiResponseEnabled: true,
       setUIResponseEnabled: (enabled) => set({ uiResponseEnabled: enabled }),
       toggleUIResponseEnabled: () => set((state) => ({ uiResponseEnabled: !state.uiResponseEnabled })),
+
+      // Quoted text
+      quotedText: null,
+      setQuotedText: (text) => set({ quotedText: text }),
     }),
     {
       name: 'chat-store',
@@ -583,6 +591,9 @@ export const useIsHydrated = () => useUIStore((s) => s.isHydrated);
 export const useUIResponseEnabled = () => useUIStore((s) => s.uiResponseEnabled);
 export const useSetUIResponseEnabled = () => useUIStore((s) => s.setUIResponseEnabled);
 export const useToggleUIResponseEnabled = () => useUIStore((s) => s.toggleUIResponseEnabled);
+
+export const useQuotedText = () => useUIStore((s) => s.quotedText);
+export const useSetQuotedText = () => useUIStore((s) => s.setQuotedText);
 
 // Combined hook for ChatInterface - reduces subscription overhead
 // Instead of 15+ individual subscriptions, use one with shallow comparison

@@ -45,6 +45,7 @@ import {
   PlusIcon,
   SquareIcon,
   XIcon,
+  CornerDownRightIcon,
 } from "lucide-react";
 import { nanoid } from "nanoid";
 import {
@@ -80,7 +81,7 @@ export type AttachmentsContext = {
   add: (files: File[] | FileList) => void;
   remove: (id: string) => void;
   clear: () => void;
-  openFileDialog: () => void;
+  openFileDialog: (accept?: string) => void;
   fileInputRef: RefObject<HTMLInputElement | null>;
 };
 
@@ -155,7 +156,7 @@ export function PromptInputProvider({
     (FileUIPart & { id: string })[]
   >([]);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
-  const openRef = useRef<() => void>(() => { });
+  const openRef = useRef<(accept?: string) => void>(() => { });
 
   const add = useCallback((files: File[] | FileList) => {
     const incoming = Array.from(files);
@@ -212,8 +213,9 @@ export function PromptInputProvider({
     };
   }, []);
 
-  const openFileDialog = useCallback(() => {
-    openRef.current?.();
+
+  const openFileDialog = useCallback((accept?: string) => {
+    openRef.current?.(accept);
   }, []);
 
   const attachments = useMemo<AttachmentsContext>(
@@ -229,7 +231,7 @@ export function PromptInputProvider({
   );
 
   const __registerFileInput = useCallback(
-    (ref: RefObject<HTMLInputElement | null>, open: () => void) => {
+    (ref: RefObject<HTMLInputElement | null>, open: (accept?: string) => void) => {
       fileInputRef.current = ref.current;
       openRef.current = open;
     },
@@ -412,10 +414,14 @@ export type PromptInputActionAddAttachmentsProps = ComponentProps<
   typeof DropdownMenuItem
 > & {
   label?: string;
+  accept?: string;
+  icon?: ReactNode;
 };
 
 export const PromptInputActionAddAttachments = ({
   label = "Add photos or files",
+  accept,
+  icon,
   ...props
 }: PromptInputActionAddAttachmentsProps) => {
   const attachments = usePromptInputAttachments();
@@ -425,10 +431,10 @@ export const PromptInputActionAddAttachments = ({
       {...props}
       onSelect={(e) => {
         e.preventDefault();
-        attachments.openFileDialog();
+        attachments.openFileDialog(accept);
       }}
     >
-      <ImageIcon className="mr-2 size-4" /> {label}
+      {icon ?? <ImageIcon className="mr-2 size-4" />} {label}
     </DropdownMenuItem>
   );
 };
@@ -490,17 +496,25 @@ export const PromptInput = ({
   const filesRef = useRef(files);
   filesRef.current = files;
 
-  const openFileDialogLocal = useCallback(() => {
-    inputRef.current?.click();
-  }, []);
+  const openFileDialogLocal = useCallback((acceptOverride?: string) => {
+    if (inputRef.current) {
+      if (acceptOverride !== undefined) {
+        inputRef.current.accept = acceptOverride;
+      } else {
+        inputRef.current.accept = accept ?? "";
+      }
+      inputRef.current.click();
+    }
+  }, [accept]);
 
   const matchesAccept = useCallback(
     (f: File) => {
-      if (!accept || accept.trim() === "") {
+      const currentAccept = inputRef.current?.accept || accept;
+      if (!currentAccept || currentAccept.trim() === "") {
         return true;
       }
 
-      const patterns = accept
+      const patterns = currentAccept
         .split(",")
         .map((s) => s.trim())
         .filter(Boolean);
@@ -602,8 +616,18 @@ export const PromptInput = ({
   // Let provider know about our hidden file input so external menus can call openFileDialog()
   useEffect(() => {
     if (!usingProvider) return;
-    controller.__registerFileInput(inputRef, () => inputRef.current?.click());
-  }, [usingProvider, controller]);
+    controller.__registerFileInput(inputRef, (accept?: string) => {
+      if (inputRef.current) {
+        if (accept !== undefined) {
+          inputRef.current.accept = accept;
+        } else {
+          // Fallback to the accept prop of PromptInput
+          inputRef.current.accept = (props as any).accept ?? "";
+        }
+        inputRef.current.click();
+      }
+    });
+  }, [usingProvider, controller, (props as any).accept]);
 
   // Note: File input cannot be programmatically set for security reasons
   // The syncHiddenInput prop is no longer functional
@@ -1429,4 +1453,39 @@ export const PromptInputCommandSeparator = ({
   ...props
 }: PromptInputCommandSeparatorProps) => (
   <CommandSeparator className={cn(className)} {...props} />
+);
+export type PromptInputQuoteProps = HTMLAttributes<HTMLDivElement> & {
+  onRemove?: () => void;
+};
+
+export const PromptInputQuote = ({
+  children,
+  className,
+  onRemove,
+  ...props
+}: PromptInputQuoteProps) => (
+  <div
+    className={cn(
+      "w-full flex items-start gap-2 bg-terminal-surface/40 px-3 py-2 border-b border-terminal-border group relative transition-colors",
+      className
+    )}
+    {...props}
+  >
+    <div className="flex-none pt-0.5">
+      <CornerDownRightIcon className="size-3.5 text-terminal-muted shrink-0 opacity-70" />
+    </div>
+    <div className="flex-1 min-w-0 text-xs sm:text-[13px] text-terminal-text/90 italic leading-relaxed line-clamp-2 font-medium">
+      "{children}"
+    </div>
+    {onRemove && (
+      <button
+        type="button"
+        onClick={onRemove}
+        className="flex-none p-1 -mr-1 text-terminal-muted hover:text-terminal-red transition-colors"
+        aria-label="Remove reference"
+      >
+        <XIcon className="size-4" />
+      </button>
+    )}
+  </div>
 );

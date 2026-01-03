@@ -397,7 +397,7 @@ export function ChatInterface() {
           className="flex-1 bg-terminal-bg"
           initial={startMessageId ? false : "smooth"}
         >
-          <ConversationContent className="max-w-4xl mx-auto w-full py-3 px-3 sm:py-4 sm:px-4 relative z-0">
+          <ConversationContent className="max-w-4xl mx-auto w-full py-3 px-3 sm:py-4 sm:px-4">
             {messages.length === 0 ? (
               <ConversationEmptyState
                 icon={<MessageSquare className="size-12 opacity-50" />}

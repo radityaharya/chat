@@ -269,7 +269,7 @@ export function ArtifactsPanel() {
                               </ArtifactDescription>
                             </div>
                           </ArtifactHeader>
-                          <ArtifactContent className="p-0 max-h-[200px] overflow-hidden relative group">
+                          <ArtifactContent className="p-0 relative group">
                             {artifact.language === 'mermaid' ? (
                               <div className="p-4 bg-white/20">
                                 <Streamdown shikiTheme={["github-dark", "github-light"]}>

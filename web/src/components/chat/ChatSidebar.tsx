@@ -14,8 +14,10 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from '@/components/ui/popover';
+import { SettingsModal } from '@/components/chat/SettingsModal';
 import {
   Dialog,
+
   DialogContent,
   DialogDescription,
   DialogHeader,
@@ -51,6 +53,7 @@ export function ChatSidebar({ className, isOpen = true, onClose, isMobile = fals
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
   const [searchResults, setSearchResults] = useState<typeof conversations[keyof typeof conversations][]>([]);
   const [isSearching, setIsSearching] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
 
   // Perform search against IndexedDB
   useEffect(() => {
@@ -298,7 +301,7 @@ export function ChatSidebar({ className, isOpen = true, onClose, isMobile = fals
         <Button
           variant="ghost"
           size="sm"
-          onClick={() => navigate({ to: '/user/settings' })}
+          onClick={() => setSettingsOpen(true)}
           title="User Settings"
           className="flex-1 justify-start text-xs font-normal text-terminal-muted hover:text-terminal-text"
         >
@@ -337,6 +340,8 @@ export function ChatSidebar({ className, isOpen = true, onClose, isMobile = fals
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <SettingsModal open={settingsOpen} onOpenChange={setSettingsOpen} />
     </div>
   );
 }

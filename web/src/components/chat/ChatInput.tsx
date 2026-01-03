@@ -25,7 +25,9 @@ import {
   PromptInputSubmit,
   PromptInputTextarea,
   PromptInputTools,
+  PromptInputQuote,
   PromptInputCommand,
+
   PromptInputCommandInput,
   PromptInputCommandList,
   PromptInputCommandEmpty,
@@ -53,13 +55,16 @@ import {
   CheckIcon,
   Trash2,
   Wrench,
+  ImageIcon,
+  FileIcon,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useRef, useState, useMemo } from 'react';
-import { useUIStore } from '@/store';
+import { useUIStore, useQuotedText, useSetQuotedText } from '@/store';
 import { useShallow } from 'zustand/react/shallow';
 import { tools } from '@/tools';
 import { cn } from '@/lib/utils';
+
 
 // Define Model interface
 export interface Model {
@@ -133,6 +138,11 @@ export function ChatInput({
     toggleTool: s.toggleTool,
   })));
 
+
+  const quotedText = useQuotedText();
+  const setQuotedText = useSetQuotedText();
+
+
   const suggestions = useUIStore(useShallow(state => {
     const activeId = state.activeConversationId;
     return activeId ? state.conversations[activeId]?.suggestions || [] : [];
@@ -196,7 +206,13 @@ export function ChatInput({
         }
       }
 
-      onSend(message.text, convertedFiles);
+      let finalText = message.text;
+      if (quotedText) {
+        finalText = `> ${quotedText}\n\n${finalText}`;
+        setQuotedText(null); // Clear after sending
+      }
+
+      onSend(finalText, convertedFiles);
     }
   };
 
@@ -246,6 +262,11 @@ export function ChatInput({
         globalDrop
         multiple
       >
+        {quotedText && (
+          <PromptInputQuote onRemove={() => setQuotedText(null)}>
+            {quotedText}
+          </PromptInputQuote>
+        )}
 
         <PromptInputBody className="px-2 sm:px-3 pt-2">
           <PromptInputAttachments>
@@ -264,7 +285,18 @@ export function ChatInput({
             <PromptInputActionMenu>
               <PromptInputActionMenuTrigger className="h-7 sm:h-8 rounded-none border border-transparent hover:border-terminal-border hover:bg-terminal-surface/50" />
               <PromptInputActionMenuContent className="rounded-none border-terminal-border">
-                <PromptInputActionAddAttachments />
+                <PromptInputActionAddAttachments
+                  label="Photos"
+                  accept="image/*"
+                  icon={<ImageIcon className="mr-2 size-4" />}
+                  className="rounded-none hover:bg-terminal-bg/50 focus:bg-terminal-bg/50"
+                />
+                <PromptInputActionAddAttachments
+                  label="Files"
+                  accept=""
+                  icon={<FileIcon className="mr-2 size-4" />}
+                  className="rounded-none hover:bg-terminal-bg/50 focus:bg-terminal-bg/50"
+                />
               </PromptInputActionMenuContent>
             </PromptInputActionMenu>
 

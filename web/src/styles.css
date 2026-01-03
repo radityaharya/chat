@@ -385,19 +385,27 @@ body.mobile-menu-open {
    Chat Message Performance Optimizations
    ============================================= */
 
-/* content-visibility: auto skips rendering off-screen messages 
-   This dramatically improves initial load and scroll performance */
-.group\/message {
-  content-visibility: auto;
-  contain-intrinsic-size: auto 150px; /* Estimated height to prevent layout shift */
+
+
+/* text selection color  251 146 60*/
+::selection {
+  background-color: rgb(var(--t-green));
+  color: white;
 }
 
-/* During active streaming, disable content-visibility to ensure smooth updates */
-.group\/message:has([data-streaming="true"]) {
-  content-visibility: visible;
+/* Chat Message Blockquote Styling */
+.is-assistant blockquote,
+.is-user blockquote {
+  @apply relative my-3 p-0 bg-transparent italic text-sm leading-relaxed w-full;
+  @apply flex gap-2;
 }
 
-/* Reduce paint complexity for message containers */
-.group\/message > * {
-  contain: layout style;
+blockquote::before {
+  content: "↳";
+  @apply flex-none text-terminal-muted opacity-70 font-bold not-italic;
+  font-family: system-ui, -apple-system, sans-serif;
+}
+
+blockquote>p {
+  @apply m-0 inline;
 }
