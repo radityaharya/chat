@@ -49,6 +49,18 @@ import {
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useRef } from 'react';
+import {
+  Context,
+  ContextTrigger,
+  ContextContent,
+  ContextContentHeader,
+  ContextContentBody,
+  ContextContentFooter,
+  ContextInputUsage,
+  ContextOutputUsage,
+  ContextCacheUsage,
+  ContextReasoningUsage,
+} from '@/components/ai-elements/context';
 import { useUIStore, useQuotedText, useSetQuotedText } from '@/store';
 import { useShallow } from 'zustand/react/shallow';
 import { tools } from '@/tools';
@@ -97,6 +109,39 @@ export function ChatInput({
     setEnabledTools: s.setEnabledTools,
     toggleTool: s.toggleTool,
   })));
+
+  const { messages } = useUIStore(useShallow(state => {
+    const activeId = state.activeConversationId;
+    return {
+      messages: activeId ? state.conversations[activeId]?.messages : []
+    };
+  }));
+
+  const totalUsage = messages?.reduce((acc, msg) => {
+    if (msg.usage) {
+      acc.promptTokens += msg.usage.promptTokens;
+      acc.completionTokens += msg.usage.completionTokens;
+      acc.totalTokens += msg.usage.totalTokens;
+      acc.cost = (acc.cost || 0) + (msg.usage.cost || 0);
+      acc.cachedTokens = (acc.cachedTokens || 0) + (msg.usage.cachedTokens || 0);
+      acc.reasoningTokens = (acc.reasoningTokens || 0) + (msg.usage.reasoningTokens || 0);
+    }
+    return acc;
+  }, {
+    promptTokens: 0,
+    completionTokens: 0,
+    totalTokens: 0,
+    cost: 0,
+    cachedTokens: 0,
+    reasoningTokens: 0
+  }) || {
+    promptTokens: 0,
+    completionTokens: 0,
+    totalTokens: 0,
+    cost: 0,
+    cachedTokens: 0,
+    reasoningTokens: 0
+  };
 
 
   const quotedText = useQuotedText();
@@ -319,9 +364,37 @@ export function ChatInput({
               onSelectModel={onSelectModel}
               disabled={disabled}
             />
+
+
           </PromptInputTools>
 
           <div className="flex items-center gap-2">
+            {totalUsage.totalTokens > 0 && (
+              <Context
+                usedTokens={totalUsage.totalTokens}
+                maxTokens={models.find(m => m.id === selectedModel)?.context_length || 128000}
+                modelId={selectedModel?.split('/').pop() || undefined}
+                usage={{
+                  inputTokens: totalUsage.promptTokens,
+                  outputTokens: totalUsage.completionTokens,
+                  cachedInputTokens: totalUsage.cachedTokens,
+                  reasoningTokens: totalUsage.reasoningTokens,
+                } as any}
+                cost={totalUsage.cost > 0 ? totalUsage.cost : undefined}
+              >
+                <ContextTrigger className="h-7 sm:h-8 rounded-none border border-transparent hover:border-terminal-border hover:bg-terminal-surface/50 px-2" />
+                <ContextContent className='rounded-none border-terminal-border'>
+                  <ContextContentHeader />
+                  <ContextContentBody className="space-y-2">
+                    <ContextInputUsage />
+                    <ContextCacheUsage />
+                    <ContextReasoningUsage />
+                    <ContextOutputUsage />
+                  </ContextContentBody>
+                  <ContextContentFooter />
+                </ContextContent>
+              </Context>
+            )}
             <PromptInputSubmit
               className="h-7! sm:h-8! rounded-none border border-terminal-border hover:bg-terminal-green hover:text-terminal-bg hover:border-terminal-green transition-colors disabled:opacity-50"
               disabled={disabled}

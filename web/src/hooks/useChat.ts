@@ -14,6 +14,8 @@ const API_BASE_URL = '/api';
 
 const GLOBAL_SYSTEM_PROMPT = `When user asks for a diagram, make it in a mermaid diagram format the UI can render it automatically. Always ensure to style the diagram in a modern and professional way. with a color scheme that is easy to read and visually appealing.
 
+DO NOT generate any mermaid diagram that is not requested by the user.
+
 To provide a title for a code block, use the syntax \`\`\`language:filename.
 
 for example:
@@ -130,9 +132,10 @@ export function useSendMessage() {
     content: string,
     streaming?: boolean,
     parts?: any[],
-    images?: any[]
+    images?: any[],
+    usage?: Message['usage']
   ) => {
-    useUIStore.getState().updateMessage(id, content, streaming, parts, images);
+    useUIStore.getState().updateMessage(id, content, streaming, parts, images, usage);
   }, []);
 
   const setMessages = useCallback((msgs: Message[]) => {
@@ -184,6 +187,16 @@ export function useSendMessage() {
       // Track all parts (text + tools) in order for interleaved rendering
       let allParts: any[] = [];
       let iterationContentStart = 0; // Track where content started for this iteration
+
+      // Track accumulated usage across tool iterations
+      let accumulatedUsage: NonNullable<Message['usage']> = {
+        promptTokens: 0,
+        completionTokens: 0,
+        totalTokens: 0,
+        cost: 0,
+        cachedTokens: 0,
+        reasoningTokens: 0
+      };
 
       // Helper to construct display content with reasoning
       const getFullContent = () => {
@@ -262,6 +275,9 @@ export function useSendMessage() {
           }
         }> = {};
 
+
+        let currentIterationUsage: Message['usage'] = undefined;
+
         while (true) {
           const { done, value } = await reader.read();
           if (done) break;
@@ -277,13 +293,29 @@ export function useSendMessage() {
 
             try {
               const parsed = JSON.parse(data);
+
+              // Capture usage if available (usually in the last chunk or separate chunk)
+              if (parsed.usage) {
+                currentIterationUsage = {
+                  promptTokens: parsed.usage.prompt_tokens,
+                  completionTokens: parsed.usage.completion_tokens,
+                  totalTokens: parsed.usage.total_tokens,
+                  cost: parsed.usage.cost,
+                  cachedTokens: parsed.usage.prompt_tokens_details?.cached_tokens,
+                  reasoningTokens: parsed.usage.completion_tokens_details?.reasoning_tokens,
+                };
+                console.log('[Stream] Received usage data for this iteration:', currentIterationUsage);
+              }
+
               const choice = parsed.choices?.[0];
               const delta = choice?.delta;
 
               let shouldUpdate = false;
 
-              if (delta?.reasoning_content) {
-                assistantReasoning += delta.reasoning_content;
+              if (delta?.reasoning_content || delta?.reasoning) {
+                const reasoningChunk = delta.reasoning_content || delta.reasoning;
+                assistantReasoning += reasoningChunk;
+                console.log('[Stream] Reasoning chunk:', reasoningChunk, '| Total reasoning:', assistantReasoning.substring(0, 50) + '...');
                 shouldUpdate = true;
               }
 
@@ -332,7 +364,20 @@ export function useSendMessage() {
               }
 
               if (shouldUpdate) {
-                updateMessage(assistantMessageId, getFullContent(), true, undefined, [...allImages, ...Object.values(imageCalls)]);
+                const fullContent = getFullContent();
+
+                // Calculate total usage so far (accumulated + current iteration)
+                const currentTotalUsage = { ...accumulatedUsage };
+                if (currentIterationUsage) {
+                  currentTotalUsage.promptTokens += currentIterationUsage.promptTokens;
+                  currentTotalUsage.completionTokens += currentIterationUsage.completionTokens;
+                  currentTotalUsage.totalTokens += currentIterationUsage.totalTokens;
+                  currentTotalUsage.cost = (currentTotalUsage.cost || 0) + (currentIterationUsage.cost || 0);
+                  currentTotalUsage.cachedTokens = (currentTotalUsage.cachedTokens || 0) + (currentIterationUsage.cachedTokens || 0);
+                  currentTotalUsage.reasoningTokens = (currentTotalUsage.reasoningTokens || 0) + (currentIterationUsage.reasoningTokens || 0);
+                }
+
+                updateMessage(assistantMessageId, fullContent, true, undefined, [...allImages, ...Object.values(imageCalls)], currentTotalUsage);
               }
 
               if (delta?.tool_calls) {
@@ -352,6 +397,16 @@ export function useSendMessage() {
           }
         }
 
+        // Merge current iteration usage into accumulated usage
+        if (currentIterationUsage) {
+          accumulatedUsage.promptTokens += currentIterationUsage.promptTokens;
+          accumulatedUsage.completionTokens += currentIterationUsage.completionTokens;
+          accumulatedUsage.totalTokens += currentIterationUsage.totalTokens;
+          accumulatedUsage.cost = (accumulatedUsage.cost || 0) + (currentIterationUsage.cost || 0);
+          accumulatedUsage.cachedTokens = (accumulatedUsage.cachedTokens || 0) + (currentIterationUsage.cachedTokens || 0);
+          accumulatedUsage.reasoningTokens = (accumulatedUsage.reasoningTokens || 0) + (currentIterationUsage.reasoningTokens || 0);
+        }
+
         const finalToolCalls = Object.values(toolCalls);
         const finalImages = Object.values(imageCalls);
         allImages = [...allImages, ...finalImages];
@@ -366,7 +421,7 @@ export function useSendMessage() {
               content: finalContent,
             });
           }
-          updateMessage(assistantMessageId, getFullContent(), false, allParts.length > 0 ? allParts : undefined, allImages);
+          updateMessage(assistantMessageId, getFullContent(), false, allParts.length > 0 ? allParts : undefined, allImages, accumulatedUsage);
           break;
         }
         // Capture text content that came after previous tool calls (if any)
@@ -401,7 +456,7 @@ export function useSendMessage() {
         // Mark where next iteration's content starts (content will be captured after tool results come back)
         iterationContentStart = assistantContent.length;
 
-        updateMessage(assistantMessageId, getFullContent(), true, allParts, allImages);
+        updateMessage(assistantMessageId, getFullContent(), true, allParts, allImages, accumulatedUsage);
 
         apiMessages.push({
           role: 'assistant',
@@ -447,7 +502,7 @@ export function useSendMessage() {
             };
           }
 
-          updateMessage(assistantMessageId, getFullContent(), true, [...allParts], allImages);
+          updateMessage(assistantMessageId, getFullContent(), true, [...allParts], allImages, accumulatedUsage);
 
           return {
             tool_call_id: tc.id,
@@ -463,7 +518,7 @@ export function useSendMessage() {
       } // while loop
 
       if (iterationCount >= MAX_ITERATIONS) {
-        updateMessage(assistantMessageId, getFullContent() + "\n\n[System: Max tool iterations reached]", false);
+        updateMessage(assistantMessageId, getFullContent() + "\n\n[System: Max tool iterations reached]", false, undefined, undefined, accumulatedUsage);
       }
 
     } catch (error) {

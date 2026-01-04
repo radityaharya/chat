@@ -7,12 +7,13 @@
  * 3. Avoiding the Zustand persist JSON serialization bottleneck
  * 
  * OPTIMIZED for fast conversation switching:
- * - Uses startTransition for non-blocking state updates
- * - Minimal re-renders via targeted selectors
+ * - Fast path: messages already in memory = instant switch
+ * - Slow path: fetch from IndexedDB, with sync updates on mobile
  * - Background attachment pre-caching
  */
 
 import { useEffect, useRef, startTransition } from 'react';
+import { flushSync } from 'react-dom';
 import { useUIStore } from '@/store';
 import { useShallow } from 'zustand/react/shallow';
 import {
@@ -22,91 +23,90 @@ import {
   type FullConversation,
 } from '@/lib/conversation-manager';
 
+// Detect mobile for sync-first behavior
+const isMobileDevice = typeof navigator !== 'undefined' &&
+  /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+
 /**
  * Hook to manage active conversation loading
  * 
  * When activeConversationId changes:
  * 1. Loads full conversation from IndexedDB
- * 2. Updates Zustand state with messages (non-blocking)
+ * 2. Updates Zustand state with messages
  * 3. Pre-caches attachments in OPFS for fast display
+ * 
+ * Uses version tracking to properly handle rapid conversation switches,
+ * especially important on mobile where async operations may be interrupted.
  */
 export function useActiveConversationLoader() {
   const activeId = useUIStore((s) => s.activeConversationId);
   const isHydrated = useUIStore((s) => s.isHydrated);
 
-  const lastLoadedIdRef = useRef<string | null>(null);
-  const isLoadingRef = useRef(false);
-
   // Load conversation when active ID changes
   useEffect(() => {
     if (!isHydrated || !activeId) return;
-    if (activeId === lastLoadedIdRef.current) return;
-    if (isLoadingRef.current) return;
 
-    isLoadingRef.current = true;
+    // FAST PATH: Check if messages are already in Zustand state
+    // This makes switching back to previously loaded chats instant
+    const existing = useUIStore.getState().conversations[activeId];
+    if (existing?.messages?.length > 0) {
+      console.log(`[ActiveConvLoader] Fast path - ${existing.messages.length} messages already in memory`);
+      return;
+    }
 
-    // Mark this as the target to load (for abort check)
-    const targetId = activeId;
-
+    // SLOW PATH: Need to fetch from IndexedDB
     const loadConversation = async () => {
       const startTime = performance.now();
 
       try {
-        const fullConv = await loadFullConversation(targetId);
+        const fullConv = await loadFullConversation(activeId);
 
-        if (fullConv) {
-          // Check if this is still the active conversation (user may have switched)
-          const currentActiveId = useUIStore.getState().activeConversationId;
-          if (currentActiveId !== targetId) {
-            console.log(`[ActiveConvLoader] Aborted - user switched to different conversation`);
-            isLoadingRef.current = false;
-            return;
-          }
+        // Check if this is still the active conversation (user may have switched during load)
+        const currentActiveId = useUIStore.getState().activeConversationId;
+        if (currentActiveId !== activeId) {
+          console.log(`[ActiveConvLoader] Aborted - user switched conversations`);
+          return;
+        }
 
-          // Use startTransition for non-blocking UI update
-          startTransition(() => {
+        if (fullConv && fullConv.messages.length > 0) {
+          // Update state with loaded messages synchronously on mobile
+          const updateState = () => {
             useUIStore.setState((state) => {
-              const existing = state.conversations[targetId];
-              if (!existing) return {};
-
-              // Only update if messages are different (avoid unnecessary renders)
-              if (existing.messages.length === fullConv.messages.length &&
-                existing.messages[0]?.id === fullConv.messages[0]?.id) {
-                return {};
-              }
+              const conv = state.conversations[activeId];
+              if (!conv) return {};
 
               return {
                 conversations: {
                   ...state.conversations,
-                  [targetId]: {
-                    ...existing,
+                  [activeId]: {
+                    ...conv,
                     messages: fullConv.messages,
                     checkpoints: fullConv.checkpoints,
                   },
                 },
               };
             });
-          });
+          };
 
-          lastLoadedIdRef.current = targetId;
+          if (isMobileDevice) {
+            flushSync(updateState);
+          } else {
+            startTransition(updateState);
+          }
+
           const elapsed = performance.now() - startTime;
           console.log(`[ActiveConvLoader] Loaded ${fullConv.messages.length} messages in ${elapsed.toFixed(1)}ms`);
 
-          // Pre-cache attachments in background (non-blocking, low priority)
-          if (fullConv.messages.length > 0) {
-            requestIdleCallback(() => {
-              precacheConversationAttachments(fullConv.messages).catch(() => { });
-            }, { timeout: 5000 });
-          }
+          // Pre-cache attachments in background
+          requestIdleCallback(() => {
+            precacheConversationAttachments(fullConv.messages).catch(() => { });
+          }, { timeout: 5000 });
         }
       } catch (error) {
         console.error(`[ActiveConvLoader] Failed to load:`, error);
-      } finally {
-        isLoadingRef.current = false;
       }
     };
 
-    // Start loading immediately
     loadConversation();
   }, [activeId, isHydrated]);
 }

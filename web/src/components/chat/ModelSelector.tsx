@@ -118,13 +118,13 @@ export function ModelSelector({
 
   return (
     <Selector open={open} onOpenChange={setOpen}>
-      <ModelSelectorTrigger asChild>
+      <ModelSelectorTrigger asChild className='w-[300px]'>
         <Button
           variant="link"
           role="combobox"
           aria-expanded={open}
           disabled={disabled}
-          className="w-full justify-start sm:w-[300px] border-terminal-border text-terminal-text rounded-none active:outline-none"
+          className="justify-start border-terminal-border text-terminal-text rounded-none active:outline-none"
         >
           {/* provider logo */}
           <ModelSelectorLogo provider={getModelProvider(selectedModel || '')} />

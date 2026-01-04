@@ -9,6 +9,7 @@ import { routeTree } from './routeTree.gen'
 
 import './styles.css'
 import reportWebVitals from './reportWebVitals.ts'
+import { ToastProvider } from './components/ui/toast.tsx'
 
 if ('serviceWorker' in navigator) {
   import('virtual:pwa-register')
@@ -58,7 +59,9 @@ if (rootElement && !rootElement.innerHTML) {
   root.render(
     <StrictMode>
       <TanStackQueryProvider.Provider {...TanStackQueryProviderContext}>
-        <RouterProvider router={router} />
+        <ToastProvider>
+          <RouterProvider router={router} />
+        </ToastProvider>
       </TanStackQueryProvider.Provider>
     </StrictMode>,
   )

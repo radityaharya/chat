@@ -1,5 +1,5 @@
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import {
   Artifact,
   ArtifactHeader,
@@ -11,13 +11,15 @@ import {
 } from '@/components/ai-elements/artifact';
 import { CodeBlock } from '@/components/ai-elements/code-block';
 import { EditableCodeBlock } from '@/components/ai-elements/editable-code-block';
-import { MessageResponse } from '@/components/ai-elements/message';
+import { Mermaid } from '@/components/ai-elements/mermaid';
 import { type CodeArtifact } from '@/lib/artifacts';
 import { CopyIcon, DownloadIcon, CodeIcon, PresentationIcon, PlayIcon, Loader2Icon, ExternalLinkIcon, RefreshCwIcon, PencilIcon, CheckIcon, XIcon } from 'lucide-react';
 import { useContainer } from '@/hooks/useContainer';
-import { useActiveConversationId } from '@/store';
+import { useActiveConversationId, useUIStore } from '@/store';
 import { useWorkspaceFiles } from '@/hooks/useWorkspaceFiles';
 import { useMessageEditor } from '@/hooks/useMessageEditor';
+import { fixMermaidCode } from '@/lib/mermaid-fixer';
+import { useToast } from '@/components/ui/toast';
 
 interface MessageArtifactProps {
   artifact: CodeArtifact;
@@ -33,11 +35,22 @@ export function MessageArtifact({ artifact, messageId, index }: MessageArtifactP
   const [editCode, setEditCode] = useState('');
   const [originalCode, setOriginalCode] = useState(''); // Store original for matching
   const [isSaving, setIsSaving] = useState(false);
+  const [isFixingMermaid, setIsFixingMermaid] = useState(false);
+
+  // Track current artifact code - syncs when prop changes
+  const [currentCode, setCurrentCode] = useState(artifact.code);
 
   const { runCommand } = useContainer();
   const activeConversationId = useActiveConversationId();
+  const selectedModel = useUIStore((s) => s.selectedModel);
   const { files, refetch: refetchFiles } = useWorkspaceFiles();
   const { editArtifact } = useMessageEditor();
+  const { showToast } = useToast();
+
+  // Sync current code when artifact prop changes (after edit)
+  useEffect(() => {
+    setCurrentCode(artifact.code);
+  }, [artifact.code]);
 
   const isMermaid = artifact.language === 'mermaid';
   const isHtml = artifact.language === 'html';
@@ -154,6 +167,61 @@ export function MessageArtifact({ artifact, messageId, index }: MessageArtifactP
     }
   };
 
+  /**
+   * Handle fixing mermaid diagram syntax errors using AI
+   */
+  const handleFixMermaid = useCallback(async (errorMessage: string) => {
+    if (isFixingMermaid || !selectedModel) {
+      if (!selectedModel) {
+        showToast('Please select a model first', 'error');
+      }
+      return;
+    }
+
+    setIsFixingMermaid(true);
+    try {
+      // Call AI to fix the mermaid code
+      const fixedCode = await fixMermaidCode(
+        currentCode, // Use currentCode instead of artifact.code
+        errorMessage,
+        selectedModel
+      );
+
+      if (fixedCode && fixedCode !== currentCode) {
+        // Use editArtifact to update the code in the message
+        const success = await editArtifact(
+          messageId,
+          artifact.title,
+          fixedCode,
+          artifact.language,
+          currentCode // Use currentCode as the original to match
+        );
+
+        if (success) {
+          console.log('[MessageArtifact] Successfully fixed mermaid diagram');
+          // Immediately update local state to re-render the Mermaid component
+          setCurrentCode(fixedCode);
+          // Toggle mode to force Mermaid to re-render with new code
+          setMode('code');
+          setTimeout(() => setMode('preview'), 50);
+          showToast('Diagram fixed successfully', 'success');
+          refetchFiles();
+        } else {
+          console.error('[MessageArtifact] Failed to save fixed mermaid code');
+          showToast('Failed to save the fixed diagram', 'error');
+        }
+      } else {
+        console.log('[MessageArtifact] AI could not fix the diagram or returned same code');
+        showToast('AI could not fix the diagram. Try editing manually.', 'error');
+      }
+    } catch (error) {
+      console.error('[MessageArtifact] Error fixing mermaid diagram:', error);
+      showToast('Error while fixing diagram', 'error');
+    } finally {
+      setIsFixingMermaid(false);
+    }
+  }, [isFixingMermaid, selectedModel, currentCode, artifact.title, artifact.language, editArtifact, messageId, refetchFiles, showToast]);
+
   return (
     <Artifact
       id={`msg-${messageId}-${artifact.id || `artifact-${index}`}`}
@@ -260,11 +328,14 @@ export function MessageArtifact({ artifact, messageId, index }: MessageArtifactP
       </ArtifactHeader>
       <ArtifactContent className="p-0">
         {isMermaid && mode === 'preview' ? (
-          <div className="border-b p-0 rounded-b-lg overflow-x-auto">
-            {/* child border  */}
-            <MessageResponse className="*:border-0 p-0 rounded-none *:rounded-none [&>*:nth-child(2)]:p-0!" mermaid={{ config: { theme: 'dark'}  }}>
-              {`\`\`\`mermaid\n${artifact.code}\n\`\`\``}
-            </MessageResponse>
+          <div className="p-4 bg-white/5 overflow-auto">
+            <Mermaid
+              chart={currentCode}
+              showDownload
+              isLoading={artifact.isIncomplete}
+              onFix={handleFixMermaid}
+              isFixing={isFixingMermaid}
+            />
           </div>
         ) : isHtml && mode === 'preview' && fileUrl ? (
           <div className="bg-white border-b p-0 rounded-b-lg overflow-hidden h-96 relative group">

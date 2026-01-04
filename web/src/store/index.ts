@@ -28,6 +28,18 @@ interface Message {
     name: string;
     parsedContent?: string; // The parsed/formatted content for preview
   }[];
+  /** Token usage and cost for this message (assistant messages only) */
+  usage?: {
+    promptTokens: number;
+    completionTokens: number;
+    totalTokens: number;
+    /** Cost in USD */
+    cost?: number;
+    /** Cached tokens count */
+    cachedTokens?: number;
+    /** Reasoning tokens count */
+    reasoningTokens?: number;
+  };
 }
 
 interface Checkpoint {
@@ -80,7 +92,7 @@ interface UIState {
   addMessage: (message: Message) => void;
   deleteMessage: (id: string) => void;
   setMessages: (messages: Message[]) => void;
-  updateMessage: (id: string, content: string, streaming?: boolean, parts?: ToolUIPart[], images?: any[]) => void;
+  updateMessage: (id: string, content: string, streaming?: boolean, parts?: ToolUIPart[], images?: any[], usage?: Message['usage']) => void;
   editMessage: (id: string, content: string) => void; // For user editing (not streaming)
   clearMessages: () => void;
   createCheckpoint: (messageId: string) => void;
@@ -255,7 +267,7 @@ export const useUIStore = create<UIState>()(
         };
       }),
 
-      updateMessage: (id, content, streaming, parts, images) =>
+      updateMessage: (id, content, streaming, parts, images, usage) =>
         set((state) => {
           const activeId = state.activeConversationId;
           if (!activeId || !state.conversations[activeId]) return {};
@@ -304,6 +316,7 @@ export const useUIStore = create<UIState>()(
             ...(streaming !== undefined && { streaming }),
             parts: newParts,
             images: newImages.length > 0 ? newImages : undefined,
+            ...(usage && { usage }),
           };
 
           // Create new array with only the changed message replaced

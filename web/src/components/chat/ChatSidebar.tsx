@@ -112,14 +112,19 @@ export function ChatSidebar({ className, isOpen = true, onClose, isMobile = fals
   }, [createConversation, navigate, isMobile, onClose]);
 
   const handleSelectChat = useCallback((chatId: string, messageId?: string) => {
+    // Set active conversation in store first
     setActiveConversation(chatId);
 
     // Navigate with message hash if provided
     const to = `/c/${chatId}` + (messageId ? `?msg=${messageId}` : '');
     navigate({ to });
 
+    // On mobile, delay closing to ensure navigation/state updates complete first
+    // This prevents the sidebar close animation from interfering with conversation loading
     if (isMobile && onClose) {
-      onClose();
+      requestAnimationFrame(() => {
+        onClose();
+      });
     }
   }, [setActiveConversation, navigate, isMobile, onClose]);
 
@@ -208,7 +213,7 @@ export function ChatSidebar({ className, isOpen = true, onClose, isMobile = fals
                   )}
                   onClick={() => handleSelectChat(chat.id)}
                 >
-                  <MessageSquare className="mr-2 size-3.5 shrink-0 opacity-70" />
+                  {/* <MessageSquare className="mr-2 size-3.5 shrink-0 opacity-70" /> */}
                   <span className={cn(
                     "w-0 flex-1 truncate transition-all duration-200",
                     "group-hover:mr-6"

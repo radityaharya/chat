@@ -3,11 +3,11 @@ import { useMessages } from '@/store';
 import { extractArtifacts, type CodeArtifact } from '@/lib/artifacts';
 import { Artifact, ArtifactHeader, ArtifactTitle, ArtifactDescription, ArtifactContent } from '@/components/ai-elements/artifact';
 import { CodeBlock } from '@/components/ai-elements/code-block';
+import { Mermaid } from '@/components/ai-elements/mermaid';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { CalendarIcon, CodeIcon, FileIcon, FolderIcon, UploadIcon, Loader2Icon, PlayIcon } from 'lucide-react';
 import { format } from 'date-fns';
 import { useMemo, useState, useRef, useEffect } from 'react';
-import { Streamdown } from 'streamdown';
 import { Input } from '@/components/ui/input';
 import { SearchIcon } from 'lucide-react';
 import { Terminal } from '@/components/tools/Terminal';
@@ -19,7 +19,6 @@ import { useActiveConversationId } from '@/store';
 import { ArrowLeftIcon } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { useContainer } from '@/hooks/useContainer';
-import { MessageResponse } from '../ai-elements/message';
 
 function FileViewer({ conversationId, file }: { conversationId: string; file: FileEntry }) {
   const { data: content, isLoading, error } = useQuery({
@@ -246,9 +245,7 @@ export function ArtifactsPanel() {
                           <ArtifactContent className="p-0 relative group overflow-hidden">
                             {artifact.language === 'mermaid' ? (
                               <div className="p-4 bg-white/5 overflow-auto max-h-[250px]">
-                                <MessageResponse className="*:border-0 p-0 rounded-none *:rounded-none [&>*:nth-child(2)]:p-0!" mermaid={{ config: { theme: 'dark' } }}>
-                                  {`\`\`\`mermaid\n${artifact.code}\n\`\`\``}
-                                </MessageResponse>
+                                <Mermaid chart={artifact.code} showDownload />
                               </div>
                             ) : (
                               <div className="max-h-[200px] overflow-y-auto">

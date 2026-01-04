@@ -328,7 +328,7 @@ export const ChatMessage = memo(function ChatMessage({ message, onRegenerate, on
         ) : (
           <>
             {hasThinking && (
-              <Reasoning isStreaming={isStreamingThought}>
+              <Reasoning isStreaming={isStreamingThought} open={isStreamingThought ? true : undefined}>
                 <ReasoningTrigger />
                 <ReasoningContent>{parsed.thinking || ''}</ReasoningContent>
               </Reasoning>
