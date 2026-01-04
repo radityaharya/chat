@@ -176,38 +176,39 @@ export function useSendMessage() {
     // Allow streaming with session auth even without API key
     // The backend will validate the session
 
-    try {
-      let assistantContent = '';
-      let assistantReasoning = '';
-      let isDone = false;
-      let iterationCount = 0;
-      let allImages: any[] = [];
-      const MAX_ITERATIONS = 10;
+    let assistantContent = '';
+    let assistantReasoning = '';
+    let isDone = false;
+    let iterationCount = 0;
+    let allImages: any[] = [];
+    const MAX_ITERATIONS = 20;
 
-      // Track all parts (text + tools) in order for interleaved rendering
-      let allParts: any[] = [];
-      let iterationContentStart = 0; // Track where content started for this iteration
+    // Track all parts (text + tools) in order for interleaved rendering
+    let allParts: any[] = [];
+    let iterationContentStart = 0; // Track where content started for this iteration
 
-      // Track accumulated usage across tool iterations
-      let accumulatedUsage: NonNullable<Message['usage']> = {
-        promptTokens: 0,
-        completionTokens: 0,
-        totalTokens: 0,
-        cost: 0,
-        cachedTokens: 0,
-        reasoningTokens: 0
-      };
+    // Track accumulated usage across tool iterations
+    let accumulatedUsage: NonNullable<Message['usage']> = {
+      promptTokens: 0,
+      completionTokens: 0,
+      totalTokens: 0,
+      cost: 0,
+      cachedTokens: 0,
+      reasoningTokens: 0
+    };
 
-      // Helper to construct display content with reasoning
-      const getFullContent = () => {
-        if (assistantReasoning) {
-          if (assistantContent) {
-            return `<think>${assistantReasoning}</think>${assistantContent}`;
-          }
-          return `<think>${assistantReasoning}`;
+    // Helper to construct display content with reasoning
+    const getFullContent = () => {
+      if (assistantReasoning) {
+        if (assistantContent) {
+          return `<think>${assistantReasoning}</think>${assistantContent}`;
         }
-        return assistantContent;
-      };
+        return `<think>${assistantReasoning}`;
+      }
+      return assistantContent;
+    };
+
+    try {
 
       while (!isDone && iterationCount < MAX_ITERATIONS) {
         iterationCount++;
@@ -524,7 +525,7 @@ export function useSendMessage() {
     } catch (error) {
       if (error instanceof Error && error.name === 'AbortError') {
         console.log('Stream aborted by user');
-        updateMessage(assistantMessageId, 'Error: Stream aborted', false);
+        updateMessage(assistantMessageId, getFullContent(), false, allParts.length > 0 ? allParts : undefined, allImages, accumulatedUsage);
       } else {
         console.error('Error sending message:', error);
         const errorMessage = error instanceof Error ? error.message : 'Failed to get response';
