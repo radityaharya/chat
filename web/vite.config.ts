@@ -25,9 +25,9 @@ export default defineConfig({
       registerType: 'prompt',
       includeAssets: ['favicon.ico', 'logo192.png', 'logo512.png'],
       manifest: {
-        name: 'Uptime Monitoring',
-        short_name: 'check',
-        description: 'Uptime Monitoring Application',
+        name: 'Chat',
+        short_name: 'chat',
+        description: 'Chat Application',
         theme_color: '#000000',
         background_color: '#ffffff',
         display: 'standalone',
@@ -80,6 +80,7 @@ export default defineConfig({
         ],
         skipWaiting: false,
         clientsClaim: false,
+        maximumFileSizeToCacheInBytes: 5 * 1024 * 1024,
       },
       devOptions: {
         enabled: false,
@@ -98,5 +99,8 @@ export default defineConfig({
         changeOrigin: true,
       },
     },
+  },
+  build: {
+    chunkSizeWarningLimit: 3000,
   },
 })

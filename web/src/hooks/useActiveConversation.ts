@@ -137,7 +137,7 @@ export function useConversationSaver() {
 
     // Generate a simple hash to detect changes
     const lastMsg = activeConv.messages[activeConv.messages.length - 1];
-    const currentHash = `${activeConv.title}:${activeConv.messages.length}:${lastMsg?.id || ''}:${lastMsg?.streaming || false}`;
+    const currentHash = `${activeConv.title}:${activeConv.messages.length}:${lastMsg?.id || ''}:${lastMsg?.streaming || false}:${activeConv.updatedAt}`;
 
     // Skip if nothing changed
     if (currentHash === lastSaveHashRef.current) return;
