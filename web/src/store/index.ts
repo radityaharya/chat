@@ -81,6 +81,7 @@ interface UIState {
   deleteMessage: (id: string) => void;
   setMessages: (messages: Message[]) => void;
   updateMessage: (id: string, content: string, streaming?: boolean, parts?: ToolUIPart[], images?: any[]) => void;
+  editMessage: (id: string, content: string) => void; // For user editing (not streaming)
   clearMessages: () => void;
   createCheckpoint: (messageId: string) => void;
   restoreCheckpoint: (checkpointId: string) => void;
@@ -306,6 +307,38 @@ export const useUIStore = create<UIState>()(
           };
 
           // Create new array with only the changed message replaced
+          chat.messages = [
+            ...chat.messages.slice(0, msgIndex),
+            updatedMessage,
+            ...chat.messages.slice(msgIndex + 1)
+          ];
+          chat.updatedAt = Date.now();
+
+          return {
+            conversations: {
+              ...state.conversations,
+              [activeId]: chat
+            }
+          };
+        }),
+
+      // Edit a message's content (for user editing, not streaming)
+      editMessage: (id, content) =>
+        set((state) => {
+          const activeId = state.activeConversationId;
+          if (!activeId || !state.conversations[activeId]) return {};
+
+          const chat = { ...state.conversations[activeId] };
+          const msgIndex = chat.messages.findIndex((msg) => msg.id === id);
+          if (msgIndex === -1) return {};
+
+          const msg = chat.messages[msgIndex];
+          const updatedMessage = {
+            ...msg,
+            content,
+            timestamp: Date.now(), // Update timestamp to trigger sync
+          };
+
           chat.messages = [
             ...chat.messages.slice(0, msgIndex),
             updatedMessage,
@@ -568,6 +601,7 @@ export const useAddMessage = () => useUIStore((s) => s.addMessage);
 export const useDeleteMessage = () => useUIStore((s) => s.deleteMessage);
 export const useSetMessages = () => useUIStore((s) => s.setMessages);
 export const useUpdateMessage = () => useUIStore((s) => s.updateMessage);
+export const useEditMessage = () => useUIStore((s) => s.editMessage);
 export const useClearMessages = () => useUIStore((s) => s.clearMessages);
 export const useSelectedModel = () => useUIStore((s) => s.selectedModel);
 export const useSetSelectedModel = () => useUIStore((s) => s.setSelectedModel);

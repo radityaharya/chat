@@ -48,51 +48,21 @@ import {
   FileIcon,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { useRef, useState } from 'react';
+import { useRef } from 'react';
 import { useUIStore, useQuotedText, useSetQuotedText } from '@/store';
 import { useShallow } from 'zustand/react/shallow';
 import { tools } from '@/tools';
 import { cn } from '@/lib/utils';
 
 
-// Define Model interface with extended metadata
-export interface ModelPricing {
-  prompt?: number;
-  completion?: number;
-  input?: number;
-  output?: number;
-  request?: number;
-  image?: number;
-}
-
-export interface Model {
-  id: string;
-  object?: string;
-  owned_by?: string;
-  display_name?: string;
-  name?: string;
-  canonical_slug?: string;
-  description?: string;
-  context_length?: number;
-  pricing?: ModelPricing;
-  architecture?: {
-    modality?: string;
-    input_modalities?: string[];
-    output_modalities?: string[];
-  };
-  top_provider?: {
-    context_length?: number;
-    max_completion_tokens?: number;
-    is_moderated?: boolean;
-  };
-  supported_parameters?: string[];
-}
+import type { Model } from '@/types/model';
 
 export interface QueueMessage {
   id: string;
   text: string;
   files?: File[];
 }
+
 
 interface ChatInputProps {
   onSend: (message: string, attachments?: File[]) => void;

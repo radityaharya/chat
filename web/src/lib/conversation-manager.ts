@@ -203,6 +203,197 @@ export async function createConversation(id: string, title: string = 'New Chat')
   return conversation;
 }
 
+/**
+ * Edit a message's content in IndexedDB
+ * Returns the updated conversation or null if not found
+ */
+export async function editMessage(
+  conversationId: string,
+  messageId: string,
+  newContent: string
+): Promise<FullConversation | null> {
+  const conv = await db.conversations.get(conversationId);
+  if (!conv) return null;
+
+  const msgIndex = conv.messages.findIndex((m: Message) => m.id === messageId);
+  if (msgIndex === -1) return null;
+
+  // Update the message
+  conv.messages[msgIndex] = {
+    ...conv.messages[msgIndex],
+    content: newContent,
+    timestamp: Date.now(),
+  };
+  conv.updatedAt = Date.now();
+
+  // Save immediately (no debounce for edits)
+  await db.conversations.put({
+    ...conv,
+    searchText: buildSearchText(conv.title, conv.messages),
+  });
+
+  console.log(`[ConvManager] Edited message ${messageId} in ${conversationId}`);
+
+  return {
+    id: conv.id,
+    title: conv.title,
+    messages: conv.messages,
+    checkpoints: conv.checkpoints || [],
+    updatedAt: conv.updatedAt,
+  };
+}
+
+/**
+ * Edit an artifact's code within a message in IndexedDB
+ * Artifacts are stored as code blocks in message content
+ * Returns the updated conversation or null if not found
+ */
+export async function editArtifactInMessage(
+  conversationId: string,
+  messageId: string,
+  artifactId: string,
+  newCode: string
+): Promise<FullConversation | null> {
+  const conv = await db.conversations.get(conversationId);
+  if (!conv) return null;
+
+  const msgIndex = conv.messages.findIndex((m: Message) => m.id === messageId);
+  if (msgIndex === -1) return null;
+
+  const message = conv.messages[msgIndex];
+
+  // artifactId is actually the title, which may be empty
+  // We need a more robust approach - pass in the original code to match
+  // For now, try title-based matching if title exists, otherwise fail gracefully
+
+  if (!artifactId || artifactId.trim() === '') {
+    console.warn(`[ConvManager] Cannot edit untitled artifact - no identifier provided`);
+    return null;
+  }
+
+  const escapedTitle = escapeRegex(artifactId);
+
+  // Artifacts can be in two formats:
+  // 1. ```language title\ncode\n```
+  // 2. ```language:filename\ncode\n```
+  // We need to match both
+
+  // Pattern 1: ```lang title
+  const pattern1 = new RegExp(
+    `(\`\`\`\\w+\\s+${escapedTitle}\\s*\\n)([\\s\\S]*?)(\n?\`\`\`)`,
+    'g'
+  );
+
+  // Pattern 2: ```lang:title
+  const pattern2 = new RegExp(
+    `(\`\`\`\\w+:${escapedTitle}\\s*\\n)([\\s\\S]*?)(\n?\`\`\`)`,
+    'g'
+  );
+
+  let newContent = message.content.replace(pattern1, `$1${newCode}$3`);
+
+  // If pattern1 didn't match, try pattern2
+  if (newContent === message.content) {
+    newContent = message.content.replace(pattern2, `$1${newCode}$3`);
+  }
+
+  if (newContent === message.content) {
+    // No match found - artifact might have a different format
+    console.warn(`[ConvManager] Artifact ${artifactId} not found in message ${messageId}`);
+    return null;
+  }
+
+  // Update the message
+  conv.messages[msgIndex] = {
+    ...message,
+    content: newContent,
+    timestamp: Date.now(),
+  };
+  conv.updatedAt = Date.now();
+
+  // Save immediately
+  await db.conversations.put({
+    ...conv,
+    searchText: buildSearchText(conv.title, conv.messages),
+  });
+
+  console.log(`[ConvManager] Edited artifact ${artifactId} in message ${messageId}`);
+
+  return {
+    id: conv.id,
+    title: conv.title,
+    messages: conv.messages,
+    checkpoints: conv.checkpoints || [],
+    updatedAt: conv.updatedAt,
+  };
+}
+
+/**
+ * Edit an artifact by matching its original code content
+ * This handles artifacts without titles
+ */
+export async function editArtifactByCode(
+  conversationId: string,
+  messageId: string,
+  language: string,
+  originalCode: string,
+  newCode: string
+): Promise<FullConversation | null> {
+  const conv = await db.conversations.get(conversationId);
+  if (!conv) return null;
+
+  const msgIndex = conv.messages.findIndex((m: Message) => m.id === messageId);
+  if (msgIndex === -1) return null;
+
+  const message = conv.messages[msgIndex];
+
+  // Build pattern to match the exact code block
+  // Match ```language\noriginalCode\n``` or ```language title\noriginalCode\n```
+  const escapedCode = escapeRegex(originalCode);
+  const pattern = new RegExp(
+    `(\`\`\`${escapeRegex(language)}[^\\n]*\\n)${escapedCode}(\\n?\`\`\`)`,
+    'g'
+  );
+
+  const newContent = message.content.replace(pattern, `$1${newCode}$2`);
+
+  if (newContent === message.content) {
+    console.warn(`[ConvManager] Artifact code block not found in message ${messageId}`);
+    return null;
+  }
+
+  // Update the message
+  conv.messages[msgIndex] = {
+    ...message,
+    content: newContent,
+    timestamp: Date.now(),
+  };
+  conv.updatedAt = Date.now();
+
+  // Save immediately
+  await db.conversations.put({
+    ...conv,
+    searchText: buildSearchText(conv.title, conv.messages),
+  });
+
+  console.log(`[ConvManager] Edited ${language} artifact by code match in message ${messageId}`);
+
+  return {
+    id: conv.id,
+    title: conv.title,
+    messages: conv.messages,
+    checkpoints: conv.checkpoints || [],
+    updatedAt: conv.updatedAt,
+  };
+}
+
+/**
+ * Helper to escape special regex characters
+ */
+function escapeRegex(str: string): string {
+  return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
 // ============================================================================
 // Flush / Cleanup
 // ============================================================================

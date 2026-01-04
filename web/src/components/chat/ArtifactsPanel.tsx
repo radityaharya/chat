@@ -19,6 +19,7 @@ import { useActiveConversationId } from '@/store';
 import { ArrowLeftIcon } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { useContainer } from '@/hooks/useContainer';
+import { MessageResponse } from '../ai-elements/message';
 
 function FileViewer({ conversationId, file }: { conversationId: string; file: FileEntry }) {
   const { data: content, isLoading, error } = useQuery({
@@ -202,7 +203,7 @@ export function ArtifactsPanel() {
         )}
       </div>
 
-      <ScrollArea className="flex-1 h-px">
+      <ScrollArea className="flex-1 h-px w-0 min-w-full">
         {activeTab === 'artifacts' ? (
           /* Artifacts Content */
           artifactsByMessage.length === 0 ? (
@@ -212,7 +213,7 @@ export function ArtifactsPanel() {
               <p className="text-sm mt-1">Generated code snippets will appear here</p>
             </div>
           ) : (
-            <div className="p-4 space-y-6">
+            <div className="p-4 space-y-6 w-full">
               {filteredArtifacts.length === 0 ? (
                 <div className="text-center text-muted-foreground text-sm py-8">
                   No artifacts found matching "{searchQuery}"
@@ -229,7 +230,7 @@ export function ArtifactsPanel() {
                       {artifacts.map((artifact, idx) => (
                         <Artifact
                           key={artifact.id || idx}
-                          className="border border-border/50 text-sm shadow-none cursor-pointer hover:border-primary/50 transition-colors"
+                          className="border border-border/50 text-sm shadow-none cursor-pointer hover:border-primary/50 transition-colors w-full overflow-hidden"
                           onClick={() => scrollToArtifact(message.id, artifact.id || `${idx}`)}
                         >
                           <ArtifactHeader className="px-3 py-2 bg-muted/30">
@@ -242,19 +243,21 @@ export function ArtifactsPanel() {
                               </ArtifactDescription>
                             </div>
                           </ArtifactHeader>
-                          <ArtifactContent className="p-0 relative group">
+                          <ArtifactContent className="p-0 relative group overflow-hidden">
                             {artifact.language === 'mermaid' ? (
-                              <div className="p-4 bg-white/20">
-                                <Streamdown shikiTheme={["github-dark", "github-light"]}>
+                              <div className="p-4 bg-white/5 overflow-auto max-h-[250px]">
+                                <MessageResponse className="*:border-0 p-0 rounded-none *:rounded-none [&>*:nth-child(2)]:p-0!" mermaid={{ config: { theme: 'dark' } }}>
                                   {`\`\`\`mermaid\n${artifact.code}\n\`\`\``}
-                                </Streamdown>
+                                </MessageResponse>
                               </div>
                             ) : (
-                              <CodeBlock
-                                code={artifact.code}
-                                language={artifact.language as any}
-                                className="rounded-none border-none text-[10px] leading-tight [&_pre]:whitespace-pre-wrap! [&_pre]:break-all! [&_code]:whitespace-pre-wrap! [&_code]:break-all!"
-                              />
+                              <div className="max-h-[200px] overflow-y-auto">
+                                <CodeBlock
+                                  code={artifact.code}
+                                  language={artifact.language as any}
+                                  className="rounded-none border-none text-[10px] leading-tight overflow-hidden [&_pre]:whitespace-pre-wrap [&_pre]:break-words"
+                                />
+                              </div>
                             )}
                             <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity flex gap-2">
                               {['bash', 'sh', 'zsh', 'python', 'python3', 'javascript', 'js'].includes(artifact.language || '') && (

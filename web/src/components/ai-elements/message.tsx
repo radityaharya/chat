@@ -55,7 +55,7 @@ export const MessageContent = ({
 }: MessageContentProps) => (
   <div
     className={cn(
-      "is-user:dark flex w-fit max-w-full min-w-0 flex-col gap-2 text-sm group-[.is-user]:overflow-hidden",
+      "is-user:dark flex max-w-full min-w-0 flex-col gap-2 text-sm group-[.is-user]:overflow-hidden",
       "group-[.is-user]:ml-auto group-[.is-user]:rounded-l-md group-[.is-user]:bg-secondary group-[.is-user]:px-4 group-[.is-user]:py-3 group-[.is-user]:text-foreground",
       "group-[.is-assistant]:text-foreground",
       className

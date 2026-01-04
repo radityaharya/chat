@@ -20,38 +20,8 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 
-interface ModelPricing {
-  prompt?: number;
-  completion?: number;
-  input?: number;
-  output?: number;
-  request?: number;
-  image?: number;
-}
+import type { Model } from '@/types/model';
 
-interface Model {
-  id: string;
-  object: string;
-  created: number;
-  owned_by: string;
-  display_name?: string;
-  name?: string;
-  canonical_slug?: string;
-  description?: string;
-  context_length?: number;
-  pricing?: ModelPricing;
-  architecture?: {
-    modality?: string;
-    input_modalities?: string[];
-    output_modalities?: string[];
-  };
-  top_provider?: {
-    context_length?: number;
-    max_completion_tokens?: number;
-    is_moderated?: boolean;
-  };
-  supported_parameters?: string[];
-}
 
 interface ModelSelectorProps {
   models: Model[];
@@ -221,7 +191,7 @@ export function ModelSelector({
                       selectedModel === model.id && "bg-terminal-bg/70"
                     )}
                   >
-                    <div className="flex items-start w-full gap-3">
+                    <div className="flex items-start flex-col sm:flex-row w-full gap-3">
                       <div className="flex items-center gap-2 min-w-0 flex-1">
                         <ModelSelectorLogo provider={provider} className="shrink-0 mt-0.5" />
                         <div className="flex-1 min-w-0">

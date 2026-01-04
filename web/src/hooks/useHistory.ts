@@ -5,18 +5,24 @@ import type { Conversation } from '../store';
 import { loadFullConversation } from '@/lib/conversation-manager';
 
 /**
- * Generate a simple hash for a conversation to detect changes.
- * Uses a fast hash based on title, message count, and last message content.
+ * Generate a full hash for a conversation to detect any changes.
+ * Hashes all message content to properly detect edits anywhere in the conversation.
  */
 function generateConversationHash(conv: Conversation): string {
+  // Build a complete signature of all message content
   const messageSummary = conv.messages
-    .slice(-3) // Only look at last 3 messages for performance
-    .map(m => `${m.id}:${m.content.slice(0, 100)}`)
+    .map(m => {
+      // Include full content, attachments, and images in the hash
+      const attachmentSummary = m.attachments?.map(a => `${a.name}:${a.url}`).join(',') || '';
+      const imageSummary = m.images?.map(img => img.image_url?.url || '').join(',') || '';
+      return `${m.id}:${m.role}:${m.content}:${attachmentSummary}:${imageSummary}`;
+    })
     .join('|');
 
+  // Include title, message count, and full content
   const data = `${conv.title}|${conv.messages.length}|${messageSummary}|${conv.updatedAt}`;
 
-  // Simple hash function (djb2)
+  // djb2 hash function - fast and sufficient for change detection
   let hash = 5381;
   for (let i = 0; i < data.length; i++) {
     hash = (hash * 33) ^ data.charCodeAt(i);

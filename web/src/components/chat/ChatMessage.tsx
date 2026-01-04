@@ -37,7 +37,9 @@ import {
   Check,
   BookmarkIcon,
   GitFork,
+  Pencil,
 } from 'lucide-react';
+import { useMessageEditor } from '@/hooks/useMessageEditor';
 import { cn } from '@/lib/utils';
 import { parseUIResponses } from '@/lib/ui-response-parser';
 import { splitContentWithArtifacts, type CodeArtifact } from '@/lib/artifacts';
@@ -166,6 +168,51 @@ export const ChatMessage = memo(function ChatMessage({ message, onRegenerate, on
   const [selection, setSelection] = useState<{ text: string; top: number; left: number } | null>(null);
   const selectionRef = useRef<HTMLDivElement>(null);
 
+  // Editing state
+  const [isEditing, setIsEditing] = useState(false);
+  const [editContent, setEditContent] = useState('');
+  const [isSaving, setIsSaving] = useState(false);
+  const editTextareaRef = useRef<HTMLTextAreaElement>(null);
+  const { editMessage } = useMessageEditor();
+
+  // Handle starting edit mode
+  const handleStartEdit = useCallback(() => {
+    setEditContent(message.content);
+    setIsEditing(true);
+    // Focus the textarea after render
+    setTimeout(() => editTextareaRef.current?.focus(), 0);
+  }, [message.content]);
+
+  // Handle saving edit
+  const handleSaveEdit = useCallback(async () => {
+    if (isSaving || editContent.trim() === '') return;
+    setIsSaving(true);
+    try {
+      const success = await editMessage(message.id, editContent);
+      if (success) {
+        setIsEditing(false);
+      }
+    } finally {
+      setIsSaving(false);
+    }
+  }, [editMessage, message.id, editContent, isSaving]);
+
+  // Handle cancel edit
+  const handleCancelEdit = useCallback(() => {
+    setIsEditing(false);
+    setEditContent('');
+  }, []);
+
+  // Handle keyboard shortcuts in edit mode
+  const handleEditKeyDown = useCallback((e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === 'Escape') {
+      handleCancelEdit();
+    } else if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+      e.preventDefault();
+      handleSaveEdit();
+    }
+  }, [handleCancelEdit, handleSaveEdit]);
+
 
   const handleMouseUp = useCallback(() => {
     const sel = window.getSelection();
@@ -258,215 +305,233 @@ export const ChatMessage = memo(function ChatMessage({ message, onRegenerate, on
     <Message
       id={`message-${message.id}`}
       from={message.role}
-      className="group/message"
+      className="group/message w-full"
       data-streaming={message.streaming ? "true" : undefined}
       onMouseUp={handleMouseUp}
     >
       <MessageContent>
 
-        {hasThinking && (
-          <Reasoning isStreaming={isStreamingThought}>
-            <ReasoningTrigger />
-            <ReasoningContent>{parsed.thinking || ''}</ReasoningContent>
-          </Reasoning>
-        )}
-        {/* Render parts in order - interleaved text and tool parts */}
-        {hasTools && message.parts?.map((part: any, index) => {
-          // Text part - render as message content
-          if (part.type === 'text') {
-            const textContent = part.content as string;
-            if (!textContent.trim()) return null;
-
-            // Parse for UI responses
-            const textSegments = splitContentWithUIResponses(textContent);
-            return (
-              <div key={`text-${index}`} className="flex flex-col gap-2 mb-3">
-                {textSegments.map((segment, segIndex) => {
-                  if (segment.type === 'text') {
-                    const artifactSegments = splitContentWithArtifacts(segment.content);
-                    return (
-                      <div key={segIndex} className="flex flex-col gap-2">
-                        {artifactSegments.map((artPart, pIndex) => {
-                          if (artPart.type === 'text') {
-                            return (
-                              <MessageResponse key={pIndex}>
-                                {artPart.content as string}
-                              </MessageResponse>
-                            );
-                          } else {
-                            const artifact = artPart.content as CodeArtifact;
-                            return (
-                              <MessageArtifact
-                                key={artifact.id || pIndex}
-                                artifact={artifact}
-                                messageId={message.id}
-                                index={pIndex}
-                              />
-                            );
-                          }
-                        })}
-                      </div>
-                    );
-                  } else {
-                    // UI response segment
-                    if (!uiResponseEnabled) {
-                      return (
-                        <MessageResponse key={segIndex}>
-                          {`<ui-response type="${segment.uiType}">${segment.content}</ui-response>`}
-                        </MessageResponse>
-                      );
-                    }
-                    return (
-                      <div key={segIndex} className="my-2">
-                        <UIResponse>
-                          <UIResponseHeader type={segment.uiType} />
-                          <UIResponseContent data={segment.parsed} type={segment.uiType} />
-                        </UIResponse>
-                      </div>
-                    );
-                  }
-                })}
-              </div>
-            );
-          }
-
-          // Tool part - render as tool
-          if (part.type.startsWith('tool-')) {
-            return (
-              <div key={`${part.toolCallId || index}`} className="mb-3">
-                <Tool className='rounded-none bg-terminal-surface'>
-                  <ToolHeader
-                    type={part.type}
-                    state={part.state}
-                    title={part.type.replace('tool-', '')}
-                  />
-                  <ToolContent>
-                    <ToolInput input={part.input} />
-                    <ToolOutput
-                      output={part.output}
-                      errorText={part.errorText}
-                    />
-                  </ToolContent>
-                </Tool>
-              </div>
-            );
-          }
-
-          return null;
-        })}
-        {/* Render final content after all tool calls (or all content if no tools) */}
-        {/* Skip this if content is already interleaved in parts */}
-        {!hasInterleavedContent && (parsed.response || (!showLoading && !hasTools && !hasImages)) && (
+        {/* Editing mode for any message */}
+        {isEditing ? (
+          <div className="prose prose-invert w-full prose-sm max-w-none">
+            <textarea
+              ref={editTextareaRef}
+              value={editContent}
+              onChange={(e) => setEditContent(e.target.value)}
+              onKeyDown={handleEditKeyDown}
+              className="w-full bg-transparent text-terminal-text resize-none focus:outline-none leading-relaxed"
+              placeholder="Edit your message..."
+              rows={Math.max(1, editContent.split('\n').length)}
+              style={{ minHeight: '1.5em' }}
+            />
+          </div>
+        ) : (
           <>
-            {contentSegments.length > 0 ? (
-              contentSegments.map((segment, index) => {
-                if (segment.type === 'text') {
-                  // After streaming completes, split into artifacts
-                  const artifactSegments = splitContentWithArtifacts(segment.content);
-                  return (
-                    <div key={index} className="flex flex-col gap-2">
-                      {artifactSegments.map((part, pIndex) => {
-                        if (part.type === 'text') {
+            {hasThinking && (
+              <Reasoning isStreaming={isStreamingThought}>
+                <ReasoningTrigger />
+                <ReasoningContent>{parsed.thinking || ''}</ReasoningContent>
+              </Reasoning>
+            )}
+            {/* Render parts in order - interleaved text and tool parts */}
+            {hasTools && message.parts?.map((part: any, index) => {
+              // Text part - render as message content
+              if (part.type === 'text') {
+                const textContent = part.content as string;
+                if (!textContent.trim()) return null;
+
+                // Parse for UI responses
+                const textSegments = splitContentWithUIResponses(textContent);
+                return (
+                  <div key={`text-${index}`} className="flex flex-col gap-2 mb-3">
+                    {textSegments.map((segment, segIndex) => {
+                      if (segment.type === 'text') {
+                        const artifactSegments = splitContentWithArtifacts(segment.content);
+                        return (
+                          <div key={segIndex} className="flex flex-col gap-2">
+                            {artifactSegments.map((artPart, pIndex) => {
+                              if (artPart.type === 'text') {
+                                return (
+                                  <MessageResponse key={pIndex}>
+                                    {artPart.content as string}
+                                  </MessageResponse>
+                                );
+                              } else {
+                                const artifact = artPart.content as CodeArtifact;
+                                return (
+                                  <MessageArtifact
+                                    key={artifact.id || pIndex}
+                                    artifact={artifact}
+                                    messageId={message.id}
+                                    index={pIndex}
+                                  />
+                                );
+                              }
+                            })}
+                          </div>
+                        );
+                      } else {
+                        // UI response segment
+                        if (!uiResponseEnabled) {
                           return (
-                            <MessageResponse key={pIndex}>
-                              {part.content as string}
+                            <MessageResponse key={segIndex}>
+                              {`<ui-response type="${segment.uiType}">${segment.content}</ui-response>`}
                             </MessageResponse>
                           );
-                        } else {
-                          const artifact = part.content as CodeArtifact;
-                          return (
-                            <MessageArtifact
-                              key={artifact.id || pIndex}
-                              artifact={artifact}
-                              messageId={message.id}
-                              index={pIndex}
-                            />
-                          );
                         }
-                      })}
-                    </div>
-                  );
-                } else {
-                  // If UI responses are disabled, don't render the fancy component
-                  if (!uiResponseEnabled) {
-                    return (
-                      <MessageResponse key={index}>
-                        {`<ui-response type="${segment.uiType}">${segment.content}</ui-response>`}
-                      </MessageResponse>
-                    );
-                  }
+                        return (
+                          <div key={segIndex} className="my-2">
+                            <UIResponse>
+                              <UIResponseHeader type={segment.uiType} />
+                              <UIResponseContent data={segment.parsed} type={segment.uiType} />
+                            </UIResponse>
+                          </div>
+                        );
+                      }
+                    })}
+                  </div>
+                );
+              }
 
-                  return (
-                    <div key={index} className="my-2">
-                      <UIResponse>
-                        <UIResponseHeader type={segment.uiType} />
-                        <UIResponseContent data={segment.parsed} type={segment.uiType} />
-                      </UIResponse>
-                    </div>
-                  );
-                }
-              })
-            ) : (
-              <MessageResponse>
-                {(!message.streaming && !hasTools && !hasImages) ? 'No response' : ''}
-              </MessageResponse>
+              // Tool part - render as tool
+              if (part.type.startsWith('tool-')) {
+                return (
+                  <div key={`${part.toolCallId || index}`} className="mb-3">
+                    <Tool className='rounded-none bg-terminal-surface'>
+                      <ToolHeader
+                        type={part.type}
+                        state={part.state}
+                        title={part.type.replace('tool-', '')}
+                      />
+                      <ToolContent>
+                        <ToolInput input={part.input} />
+                        <ToolOutput
+                          output={part.output}
+                          errorText={part.errorText}
+                        />
+                      </ToolContent>
+                    </Tool>
+                  </div>
+                );
+              }
+
+              return null;
+            })}
+            {/* Render final content after all tool calls (or all content if no tools) */}
+            {/* Skip this if content is already interleaved in parts */}
+            {!hasInterleavedContent && (parsed.response || (!showLoading && !hasTools && !hasImages)) && (
+              <>
+                {contentSegments.length > 0 ? (
+                  contentSegments.map((segment, index) => {
+                    if (segment.type === 'text') {
+                      // After streaming completes, split into artifacts
+                      const artifactSegments = splitContentWithArtifacts(segment.content);
+                      return (
+                        <div key={index} className="flex flex-col gap-2">
+                          {artifactSegments.map((part, pIndex) => {
+                            if (part.type === 'text') {
+                              return (
+                                <MessageResponse key={pIndex}>
+                                  {part.content as string}
+                                </MessageResponse>
+                              );
+                            } else {
+                              const artifact = part.content as CodeArtifact;
+                              return (
+                                <MessageArtifact
+                                  key={artifact.id || pIndex}
+                                  artifact={artifact}
+                                  messageId={message.id}
+                                  index={pIndex}
+                                />
+                              );
+                            }
+                          })}
+                        </div>
+                      );
+                    } else {
+                      // If UI responses are disabled, don't render the fancy component
+                      if (!uiResponseEnabled) {
+                        return (
+                          <MessageResponse key={index}>
+                            {`<ui-response type="${segment.uiType}">${segment.content}</ui-response>`}
+                          </MessageResponse>
+                        );
+                      }
+
+                      return (
+                        <div key={index} className="my-2">
+                          <UIResponse>
+                            <UIResponseHeader type={segment.uiType} />
+                            <UIResponseContent data={segment.parsed} type={segment.uiType} />
+                          </UIResponse>
+                        </div>
+                      );
+                    }
+                  })
+                ) : (
+                  <MessageResponse>
+                    {(!message.streaming && !hasTools && !hasImages) ? 'No response' : ''}
+                  </MessageResponse>
+                )}
+              </>
+            )}
+            {message.images && message.images.length > 0 && (
+              <div className="flex flex-col gap-2 my-2">
+                {message.images.map((img, i) => (
+                  <Dialog key={i}>
+                    <DialogTrigger asChild>
+                      <div className="cursor-pointer hover:opacity-90 transition-opacity">
+                        <Image
+                          url={img.image_url.url}
+                          // Pass dummy values to satisfy potentially required props if strict
+                          base64=""
+                          mediaType="image/png"
+                          uint8Array={new Uint8Array()}
+                          alt="Message attachment"
+                        />
+                      </div>
+                    </DialogTrigger>
+                    <DialogContent className="max-w-4xl w-auto p-0 border-none bg-transparent shadow-none">
+                      <DialogTitle className="sr-only">Image Preview</DialogTitle>
+                      <div className="relative w-full flex items-center justify-center">
+                        <Image
+                          url={img.image_url.url}
+                          base64=""
+                          mediaType="image/png"
+                          uint8Array={new Uint8Array()}
+                          className="max-h-[85vh] w-auto max-w-full object-contain rounded-md"
+                          alt="Message attachment preview"
+                        />
+                      </div>
+                    </DialogContent>
+                  </Dialog>
+                ))}
+              </div>
+            )}
+            {showLoading && (
+              <div className="flex items-center gap-2 text-muted-foreground text-sm">
+                <Loader2Icon className="animate-spin size-3" />
+                <span className="italic">Thinking...</span>
+              </div>
+            )}
+            {message.attachments && message.attachments.length > 0 && (
+              <MessageAttachments>
+                {message.attachments.map((attachment, index) => (
+                  <MessageAttachment
+                    key={`${attachment.url}-${index}`}
+                    data={{
+                      type: 'file',
+                      url: attachment.url,
+                      filename: attachment.name,
+                      mediaType: attachment.contentType,
+                      parsedContent: attachment.parsedContent,
+                    }}
+                  />
+                ))}
+              </MessageAttachments>
             )}
           </>
-        )}
-        {message.images && message.images.length > 0 && (
-          <div className="flex flex-col gap-2 my-2">
-            {message.images.map((img, i) => (
-              <Dialog key={i}>
-                <DialogTrigger asChild>
-                  <div className="cursor-pointer hover:opacity-90 transition-opacity">
-                    <Image
-                      url={img.image_url.url}
-                      // Pass dummy values to satisfy potentially required props if strict
-                      base64=""
-                      mediaType="image/png"
-                      uint8Array={new Uint8Array()}
-                      alt="Message attachment"
-                    />
-                  </div>
-                </DialogTrigger>
-                <DialogContent className="max-w-4xl w-auto p-0 border-none bg-transparent shadow-none">
-                  <DialogTitle className="sr-only">Image Preview</DialogTitle>
-                  <div className="relative w-full flex items-center justify-center">
-                    <Image
-                      url={img.image_url.url}
-                      base64=""
-                      mediaType="image/png"
-                      uint8Array={new Uint8Array()}
-                      className="max-h-[85vh] w-auto max-w-full object-contain rounded-md"
-                      alt="Message attachment preview"
-                    />
-                  </div>
-                </DialogContent>
-              </Dialog>
-            ))}
-          </div>
-        )}
-        {showLoading && (
-          <div className="flex items-center gap-2 text-muted-foreground text-sm">
-            <Loader2Icon className="animate-spin size-3" />
-            <span className="italic">Thinking...</span>
-          </div>
-        )}
-        {message.attachments && message.attachments.length > 0 && (
-          <MessageAttachments>
-            {message.attachments.map((attachment, index) => (
-              <MessageAttachment
-                key={`${attachment.url}-${index}`}
-                data={{
-                  type: 'file',
-                  url: attachment.url,
-                  filename: attachment.name,
-                  mediaType: attachment.contentType,
-                  parsedContent: attachment.parsedContent,
-                }}
-              />
-            ))}
-          </MessageAttachments>
         )}
       </MessageContent>
 
@@ -474,14 +539,36 @@ export const ChatMessage = memo(function ChatMessage({ message, onRegenerate, on
         <MessageActions
           className={cn(
             "opacity-0 group-hover/message:opacity-100 transition-opacity",
-            message.role === "user" && "justify-end"
+            message.role === "user" && "justify-end",
+            isEditing && "opacity-100" // Always show when editing
           )}
         >
           <MessageAction onClick={handleCopy} tooltip="Copy">
             {copied ? <Check size={14} /> : <Copy size={14} />}
           </MessageAction>
 
-          {message.role === 'assistant' && onRegenerate && (
+          {!isEditing && (
+            <MessageAction onClick={handleStartEdit} tooltip="Edit">
+              <Pencil size={14} />
+            </MessageAction>
+          )}
+
+          {isEditing && (
+            <>
+              <MessageAction onClick={handleCancelEdit} tooltip="Cancel (Esc)">
+                <Trash2 size={14} />
+              </MessageAction>
+              <MessageAction
+                onClick={handleSaveEdit}
+                tooltip="Save (⌘+Enter)"
+                disabled={isSaving || !editContent.trim()}
+              >
+                {isSaving ? <Loader2Icon size={14} className="animate-spin" /> : <Check size={14} />}
+              </MessageAction>
+            </>
+          )}
+
+          {message.role === 'assistant' && onRegenerate && !isEditing && (
             <MessageAction onClick={() => onRegenerate(message.id)} tooltip="Regenerate">
               <RefreshCw size={14} />
             </MessageAction>

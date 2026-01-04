@@ -1,5 +1,5 @@
 
-import { useState } from 'react';
+import { useState, useCallback } from 'react';
 import {
   Artifact,
   ArtifactHeader,
@@ -10,12 +10,14 @@ import {
   ArtifactContent,
 } from '@/components/ai-elements/artifact';
 import { CodeBlock } from '@/components/ai-elements/code-block';
+import { EditableCodeBlock } from '@/components/ai-elements/editable-code-block';
 import { MessageResponse } from '@/components/ai-elements/message';
 import { type CodeArtifact } from '@/lib/artifacts';
-import { CopyIcon, DownloadIcon, CodeIcon, PresentationIcon, PlayIcon, Loader2Icon, ExternalLinkIcon, RefreshCwIcon } from 'lucide-react';
+import { CopyIcon, DownloadIcon, CodeIcon, PresentationIcon, PlayIcon, Loader2Icon, ExternalLinkIcon, RefreshCwIcon, PencilIcon, CheckIcon, XIcon } from 'lucide-react';
 import { useContainer } from '@/hooks/useContainer';
 import { useActiveConversationId } from '@/store';
 import { useWorkspaceFiles } from '@/hooks/useWorkspaceFiles';
+import { useMessageEditor } from '@/hooks/useMessageEditor';
 
 interface MessageArtifactProps {
   artifact: CodeArtifact;
@@ -24,17 +26,23 @@ interface MessageArtifactProps {
 }
 
 export function MessageArtifact({ artifact, messageId, index }: MessageArtifactProps) {
-  const [mode, setMode] = useState<'code' | 'preview'>('preview');
+  const [mode, setMode] = useState<'code' | 'preview' | 'edit'>('preview');
   const [isRunning, setIsRunning] = useState(false);
   const [output, setOutput] = useState<string | null>(null);
   const [iframeKey, setIframeKey] = useState(0); // For reloading iframe
+  const [editCode, setEditCode] = useState('');
+  const [originalCode, setOriginalCode] = useState(''); // Store original for matching
+  const [isSaving, setIsSaving] = useState(false);
+
   const { runCommand } = useContainer();
   const activeConversationId = useActiveConversationId();
-  const { files } = useWorkspaceFiles();
+  const { files, refetch: refetchFiles } = useWorkspaceFiles();
+  const { editArtifact } = useMessageEditor();
 
   const isMermaid = artifact.language === 'mermaid';
   const isHtml = artifact.language === 'html';
   const isFileReady = files.some(f => f.name === artifact.title);
+  const isEditing = mode === 'edit';
 
   // Script languages that we can execute
   const isRunnable = ['bash', 'sh', 'zsh', 'python', 'python3', 'javascript', 'js'].includes(artifact.language || '');
@@ -46,11 +54,12 @@ export function MessageArtifact({ artifact, messageId, index }: MessageArtifactP
     : null;
 
   const handleCopy = () => {
-    navigator.clipboard.writeText(artifact.code);
+    navigator.clipboard.writeText(isEditing ? editCode : artifact.code);
   };
 
   const handleDownload = () => {
-    const blob = new Blob([artifact.code], { type: 'text/plain' });
+    const code = isEditing ? editCode : artifact.code;
+    const blob = new Blob([code], { type: 'text/plain' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
@@ -60,6 +69,52 @@ export function MessageArtifact({ artifact, messageId, index }: MessageArtifactP
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
   };
+
+  const handleStartEdit = useCallback(() => {
+    setEditCode(artifact.code);
+    setOriginalCode(artifact.code); // Store for matching
+    setMode('edit');
+    // CodeMirror handles focus via autoFocus prop
+  }, [artifact.code]);
+
+  const handleCancelEdit = useCallback(() => {
+    setEditCode('');
+    setMode('code');
+  }, []);
+
+  const handleSaveEdit = useCallback(async () => {
+    if (isSaving || !editCode.trim()) return;
+    setIsSaving(true);
+    try {
+      // Pass both title (if exists) and original code + language for fallback matching
+      const success = await editArtifact(
+        messageId,
+        artifact.title,
+        editCode,
+        artifact.language,
+        originalCode
+      );
+      if (success) {
+        setMode('code');
+        setEditCode('');
+        setOriginalCode('');
+        // Refetch workspace files as the artifact may have been updated
+        refetchFiles();
+      }
+    } finally {
+      setIsSaving(false);
+    }
+  }, [editArtifact, messageId, artifact.title, artifact.language, editCode, originalCode, isSaving, refetchFiles]);
+
+  const handleEditKeyDown = useCallback((e: React.KeyboardEvent) => {
+    if (e.key === 'Escape') {
+      handleCancelEdit();
+    } else if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+      e.preventDefault();
+      handleSaveEdit();
+    }
+    // Tab handling is done by EditableCodeBlock internally
+  }, [handleCancelEdit, handleSaveEdit]);
 
   const handleRun = async () => {
     if (isRunning) return;
@@ -176,13 +231,38 @@ export function MessageArtifact({ artifact, messageId, index }: MessageArtifactP
             onClick={handleDownload}
             tooltip="Download"
           />
+          {/* Edit mode actions */}
+          {!isEditing ? (
+            <ArtifactAction
+              icon={PencilIcon}
+              label="Edit"
+              onClick={handleStartEdit}
+              tooltip="Edit code"
+            />
+          ) : (
+            <>
+              <ArtifactAction
+                icon={XIcon}
+                label="Cancel"
+                onClick={handleCancelEdit}
+                tooltip="Cancel (Esc)"
+              />
+              <ArtifactAction
+                icon={isSaving ? Loader2Icon : CheckIcon}
+                label="Save"
+                onClick={handleSaveEdit}
+                tooltip="Save (⌘+Enter)"
+                disabled={isSaving || !editCode.trim()}
+              />
+            </>
+          )}
         </ArtifactActions>
       </ArtifactHeader>
       <ArtifactContent className="p-0">
         {isMermaid && mode === 'preview' ? (
           <div className="border-b p-0 rounded-b-lg overflow-x-auto">
             {/* child border  */}
-            <MessageResponse className="*:border-0 p-0 rounded-none *:rounded-none [&>*:nth-child(2)]:p-0!" mermaid={{ config: { theme: 'dark' } }}>
+            <MessageResponse className="*:border-0 p-0 rounded-none *:rounded-none [&>*:nth-child(2)]:p-0!" mermaid={{ config: { theme: 'dark'}  }}>
               {`\`\`\`mermaid\n${artifact.code}\n\`\`\``}
             </MessageResponse>
           </div>
@@ -207,6 +287,17 @@ export function MessageArtifact({ artifact, messageId, index }: MessageArtifactP
           <div className="bg-[#0d0d0d] text-muted-foreground p-4 font-mono text-xs overflow-x-auto whitespace-pre-wrap rounded-b-lg border-t border-white/10 max-h-96">
             {output}
           </div>
+        ) : isEditing ? (
+          // Edit mode - editable code with Shiki syntax highlighting
+          <EditableCodeBlock
+            code={editCode}
+            language={artifact.language as any}
+            showLineNumbers
+            onChange={setEditCode}
+            onKeyDown={handleEditKeyDown}
+            autoFocus
+            className="border-none rounded-none min-h-[300px]"
+          />
         ) : (
           <CodeBlock
             code={artifact.code}

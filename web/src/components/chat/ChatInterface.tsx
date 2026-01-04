@@ -463,7 +463,7 @@ export function ChatInterface() {
 
       {/* Artifacts Panel - Desktop (1024px+) */}
       {artifactsPanelOpen && isDesktop && (
-        <div className="h-full border-l border-terminal-border bg-terminal-bg relative z-10 w-80 xl:w-96 shrink-0 transition-all duration-300">
+        <div className="h-full border-l border-terminal-border bg-terminal-bg relative z-10 w-80 xl:w-96 shrink-0 overflow-hidden">
           <ArtifactsPanel />
         </div>
       )}

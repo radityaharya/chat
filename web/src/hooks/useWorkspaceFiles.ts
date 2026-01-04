@@ -36,6 +36,7 @@ export function useWorkspaceFiles() {
     error,
     uploadFile: uploadMutation.mutateAsync,
     isUploading: uploadMutation.isPending,
+    refetch: () => queryClient.invalidateQueries({ queryKey }),
   };
 }
 
