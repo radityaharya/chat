@@ -10,7 +10,7 @@ import {
   ModelSelectorTrigger,
   ModelSelectorLogo,
 } from '@/components/ai-elements/model-selector';
-import { Check, ChevronDown, ArrowUpDown } from 'lucide-react';
+import { Check, ChevronDown, ArrowUpDown, Info, Image as ImageIcon, ExternalLink } from 'lucide-react';
 import { cn, formatModelName } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import {
@@ -19,6 +19,12 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui/tooltip';
 
 import type { Model } from '@/types/model';
 
@@ -202,13 +208,85 @@ export function ModelSelector({
                             )}
                           </div>
                           {model.description && (
-                            <div className="text-xs text-terminal-muted mt-0.5 line-clamp-1">
-                              {model.description}
+                            <div className="flex items-center gap-1.5 mt-0.5">
+                              <TooltipProvider>
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <span className="cursor-help hover:text-terminal-text transition-colors shrink-0">
+                                      <Info className="h-2 w-2 text-terminal-muted" />
+                                    </span>
+                                  </TooltipTrigger>
+                                  <TooltipContent
+                                    side="right"
+                                    className="max-w-[420px] p-3 border-terminal-border rounded-none bg-terminal-bg text-terminal-text font-mono text-xs"
+                                  >
+                                    <div className="space-y-3">
+                                      {/* Description Section */}
+                                      <div className="space-y-1">
+                                        <h4 className="font-bold text-terminal-accent">Description</h4>
+                                        <p className="text-terminal-text/90 leading-relaxed">
+                                          {model.description}
+                                        </p>
+                                      </div>
+
+                                      {/* Details Section */}
+                                      <div className="space-y-1.5 border-t border-terminal-border pt-2">
+                                        <div className="flex justify-between items-start gap-2">
+                                          <span className="text-terminal-muted">Provider</span>
+                                          <span className="text-right font-medium">{model.owned_by || provider}</span>
+                                        </div>
+
+                                        {model.architecture && (
+                                          <>
+                                            {model.architecture.modality && (
+                                              <div className="flex justify-between items-start gap-2">
+                                                <span className="text-terminal-muted">Modality</span>
+                                                <span className="text-right">{model.architecture.modality}</span>
+                                              </div>
+                                            )}
+                                            {/* Show Input/Output modalities if they exist and are different from just "text" which is implied */}
+                                            {model.architecture.input_modalities && model.architecture.input_modalities.length > 0 && (
+                                              <div className="flex justify-between items-start gap-2">
+                                                <span className="text-terminal-muted">Input</span>
+                                                <span className="text-right capitalize">{model.architecture.input_modalities.join(', ')}</span>
+                                              </div>
+                                            )}
+                                            {model.architecture.output_modalities && model.architecture.output_modalities.length > 0 && (
+                                              <div className="flex justify-between items-start gap-2">
+                                                <span className="text-terminal-muted">Output</span>
+                                                <span className="text-right capitalize">{model.architecture.output_modalities.join(', ')}</span>
+                                              </div>
+                                            )}
+                                          </>
+                                        )}
+                                        <a
+                                          href={`https://openrouter.ai/${model.id.replace('openrouter/', '')}`}
+                                          target="_blank"
+                                          rel="noopener noreferrer"
+                                          className="flex justify-between items-center pt-2 mt-2 border-t border-terminal-border hover:text-terminal-accent transition-colors group"
+                                        >
+                                          <span className="text-terminal-muted group-hover:text-terminal-accent">OpenRouter</span>
+                                          <ExternalLink className="w-3 h-3 text-terminal-muted group-hover:text-terminal-accent" />
+                                        </a>
+                                      </div>
+                                    </div>
+                                  </TooltipContent>
+                                </Tooltip>
+                              </TooltipProvider>
+                              <div className="text-xs text-terminal-muted line-clamp-1">
+                                {model.description}
+                              </div>
                             </div>
                           )}
                         </div>
                       </div>
                       <div className="flex flex-wrap gap-1.5 items-start shrink-0">
+                        {/* Image Capability Indicator */}
+                        {(model.architecture?.modality?.includes('image') || model.architecture?.input_modalities?.includes('image')) && (
+                          // <span className="inline-flex items-center gap-1 px-0.5 py-0.5 text-[10px] font-mono bg-terminal-surface border border-terminal-border text-terminal-text" title="Supports image input">
+                          <ImageIcon className="w-2 h-2" />
+                          // </span>
+                        )}
                         {contextLength && (
                           <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px] font-mono bg-terminal-surface border border-terminal-border text-terminal-text">
                             {formatContextLength(contextLength)} ctx
@@ -232,7 +310,7 @@ export function ModelSelector({
             </ModelSelectorGroup>
           ))}
         </ModelSelectorList>
-      </ModelSelectorContent>
-    </Selector>
+      </ModelSelectorContent >
+    </Selector >
   );
 }

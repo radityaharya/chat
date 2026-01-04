@@ -171,7 +171,7 @@ export function ChatSidebar({ className, isOpen = true, onClose, isMobile = fals
         </div>
         <Button
           onClick={handleCreateChat}
-          className="w-full justify-start font-normal text-terminal-bg bg-terminal-green hover:bg-terminal-green/90"
+          className="w-full justify-start font-normal rounded-none text-terminal-bg bg-terminal-green hover:bg-terminal-green/90"
           size="sm"
         >
           <Plus className="mr-2 size-4" /> New Chat
@@ -180,7 +180,7 @@ export function ChatSidebar({ className, isOpen = true, onClose, isMobile = fals
           <Search className="absolute left-2.5 top-2.5 size-3.5 text-muted-foreground" />
           <Input
             placeholder="Search conversations..."
-            className="pl-8 h-8 text-xs bg-terminal-bg border-terminal-border focus-visible:ring-terminal-primary"
+            className="pl-8 h-8 text-xs bg-terminal-bg rounded-none border-terminal-border focus-visible:ring-terminal-primary"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
           />
@@ -208,8 +208,8 @@ export function ChatSidebar({ className, isOpen = true, onClose, isMobile = fals
                   variant={activeId === chat.id ? "secondary" : "ghost"}
                   size="sm"
                   className={cn(
-                    "w-full justify-start text-left text-xs font-normal h-9 overflow-hidden pr-2",
-                    activeId === chat.id && "bg-terminal-border text-terminal-text shadow-sm"
+                    "w-full justify-start text-left text-xs font-normal h-9 overflow-hidden pr-2 rounded-none",
+                    activeId === chat.id && "bg-terminal-border text-terminal-text shadow-sm rounded-none"
                   )}
                   onClick={() => handleSelectChat(chat.id)}
                 >
@@ -265,7 +265,7 @@ export function ChatSidebar({ className, isOpen = true, onClose, isMobile = fals
                     {chat.matches.slice(0, 3).map((match: any, idx: number) => (
                       <div
                         key={`${chat.id}-${match.messageId}-${idx}`}
-                        className="text-[10px] text-muted-foreground bg-terminal-surface/50 hover:bg-terminal-surface p-1.5 rounded cursor-pointer border border-transparent hover:border-terminal-border transition-colors truncate"
+                        className="text-[10px] text-muted-foreground bg-terminal-surface/50 hover:bg-terminal-surface p-1.5 rounded-none cursor-pointer border border-transparent hover:border-terminal-border transition-colors truncate"
                         onClick={(e) => {
                           e.stopPropagation();
                           handleSelectChat(chat.id, match.messageId);
