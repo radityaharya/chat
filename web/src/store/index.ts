@@ -6,7 +6,6 @@ import { tools } from '@/tools';
 import type { ToolUIPart } from 'ai';
 import { createConversationStorage } from '@/lib/conversation-storage';
 
-// Use the optimized conversation storage that stores each conversation separately
 const conversationStorage = createConversationStorage();
 
 interface Message {
@@ -26,18 +25,14 @@ interface Message {
     url: string;
     contentType: string;
     name: string;
-    parsedContent?: string; // The parsed/formatted content for preview
+    parsedContent?: string;
   }[];
-  /** Token usage and cost for this message (assistant messages only) */
   usage?: {
     promptTokens: number;
     completionTokens: number;
     totalTokens: number;
-    /** Cost in USD */
     cost?: number;
-    /** Cached tokens count */
     cachedTokens?: number;
-    /** Reasoning tokens count */
     reasoningTokens?: number;
   };
 }
@@ -59,7 +54,6 @@ interface Conversation {
 
 
 interface UIState {
-  // Hydration state - tracks when persisted state is loaded from IndexedDB
   isHydrated: boolean;
   setHydrated: (hydrated: boolean) => void;
 
@@ -74,11 +68,6 @@ interface UIState {
   systemPrompt: string;
   setSystemPrompt: (prompt: string) => void;
 
-  // Chat state
-  // NOTE: This store mainly holds conversation METADATA (id, title, updatedAt).
-  // Heavy message data is persisted to IndexedDB via conversation-storage.ts.
-  // The 'conversations' map here mirrors the metadata for UI lists.
-  // Full messages are lazy-loaded into this store ONLY for the active conversation.
   conversations: Record<string, Conversation>;
   activeConversationId: string | null;
 
@@ -241,7 +230,6 @@ export const useUIStore = create<UIState>()(
         chat.messages = [...chat.messages, message];
         chat.updatedAt = Date.now();
 
-        // Auto-title if it's the first user message and title is default
         if (chat.messages.length === 1 && message.role === 'user') {
           chat.title = message.content.slice(0, 30) || 'New Chat';
         }
@@ -436,23 +424,7 @@ export const useUIStore = create<UIState>()(
         // Restore messages up to and including the checkpoint message
         chat.messages = chat.messages.slice(0, messageIndex + 1);
 
-        // Remove this checkpoint and any others that attached to messages that are now gone
-        // Actually, logic says "remove checkpoints after this point".
-        // The current checkpoint is KEPT? Or removed?
-        // Prompt says: "Remove checkpoints after this point"
-        // Also typically in "restore", you might want to keep the checkpoint you restored TO, 
-        // OR consume it.
-        // Let's assume we keep the one we restored to, but remove any that were attached to messages we just deleted (which shouldn't happen if we only restore to this index, unless we have checkpoints on future messages).
-        // BUT wait, if we delete message N+1...M, any checkpoints attached to those must die.
-        // Also, if we are "restoring" presumably we might want to "branch" effectively, existing checkpoints on the common history stay.
-
         // Filter checkpoints: keep those where the messageId still exists in the truncated list.
-        const remainingMessageIds = new Set(chat.messages.map(m => m.id));
-        chat.checkpoints = chat.checkpoints.filter(cp => remainingMessageIds.has(cp.messageId));
-
-        // Use case also says:
-        // setCheckpoints(checkpoints.filter(cp => cp.messageIndex <= messageIndex));
-        // So we remove checkpoints that were AFTER this one.
 
         chat.updatedAt = Date.now();
 
@@ -543,7 +515,6 @@ export const useUIStore = create<UIState>()(
       storage: createJSONStorage(() => conversationStorage),
       version: 2, // Increment for new storage format
       partialize: (state) => ({
-        // all state is now persisted efficiently via the adapter
         darkMode: state.darkMode,
         apiKey: state.apiKey,
         selectedModel: state.selectedModel,
@@ -555,19 +526,13 @@ export const useUIStore = create<UIState>()(
         artifactsPanelOpen: state.artifactsPanelOpen,
         uiResponseEnabled: state.uiResponseEnabled,
       }),
-      // Migration function for handling version updates
-      migrate: (persistedState: any, version: number) => {
-        console.log('[Store] Hydrating state version:', version);
+      migrate: (persistedState: any) => {
         return persistedState;
       },
       onRehydrateStorage: () => {
         return (_state, error) => {
           if (error) {
-            console.error('[Store] Hydration error:', error);
-          } else {
-            console.log('[Store] Hydration finished');
           }
-          // Mark as hydrated regardless of error - UI needs to proceed
           useUIStore.getState().setHydrated(true);
         };
       },

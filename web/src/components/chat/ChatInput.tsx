@@ -104,7 +104,7 @@ export function ChatInput({
 }: ChatInputProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
-  // Combined selector for tools - reduces from 3 subscriptions to 1
+  // chat tools state
   const { enabledTools, setEnabledTools, toggleTool } = useUIStore(useShallow((s) => ({
     enabledTools: s.enabledTools,
     setEnabledTools: s.setEnabledTools,
@@ -172,18 +172,15 @@ export function ChatInput({
 
       if (message.files && message.files.length > 0) {
         for (const filePart of message.files) {
-          // Verify it's a file part with a URL
           if (filePart.type === 'file' && filePart.url) {
             try {
               const response = await fetch(filePart.url);
               const blob = await response.blob();
-              // Cast filePart to any to access custom properties like filename/mediaType that might be added by PromptInput
               const filename = (filePart as any).filename || 'attachment';
               const type = (filePart as any).mediaType || blob.type;
 
               convertedFiles.push(new File([blob], filename, { type }));
             } catch (error) {
-              console.error('Failed to process attachment:', error);
             }
           }
         }
@@ -192,7 +189,7 @@ export function ChatInput({
       let finalText = message.text;
       if (quotedText) {
         finalText = `> ${quotedText}\n\n${finalText}`;
-        setQuotedText(null); // Clear after sending
+        setQuotedText(null);
       }
 
       onSend(finalText, convertedFiles);

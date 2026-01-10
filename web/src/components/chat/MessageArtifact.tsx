@@ -60,8 +60,6 @@ export function MessageArtifact({ artifact, messageId, index }: MessageArtifactP
   // Script languages that we can execute
   const isRunnable = ['bash', 'sh', 'zsh', 'python', 'python3', 'javascript', 'js'].includes(artifact.language || '');
 
-  // Construct file URL for HTML preview
-  // Note used for Iframe src
   const fileUrl = activeConversationId && artifact.title
     ? `/api/v1/workspaces/${activeConversationId}/files/${encodeURIComponent(artifact.title)}`
     : null;
@@ -85,9 +83,8 @@ export function MessageArtifact({ artifact, messageId, index }: MessageArtifactP
 
   const handleStartEdit = useCallback(() => {
     setEditCode(artifact.code);
-    setOriginalCode(artifact.code); // Store for matching
+    setOriginalCode(artifact.code);
     setMode('edit');
-    // CodeMirror handles focus via autoFocus prop
   }, [artifact.code]);
 
   const handleCancelEdit = useCallback(() => {
@@ -111,7 +108,6 @@ export function MessageArtifact({ artifact, messageId, index }: MessageArtifactP
         setMode('code');
         setEditCode('');
         setOriginalCode('');
-        // Refetch workspace files as the artifact may have been updated
         refetchFiles();
       }
     } finally {
@@ -126,7 +122,6 @@ export function MessageArtifact({ artifact, messageId, index }: MessageArtifactP
       e.preventDefault();
       handleSaveEdit();
     }
-    // Tab handling is done by EditableCodeBlock internally
   }, [handleCancelEdit, handleSaveEdit]);
 
   const handleRun = async () => {
@@ -135,7 +130,7 @@ export function MessageArtifact({ artifact, messageId, index }: MessageArtifactP
     setIsRunning(true);
     try {
       let command = '';
-      const fileName = artifact.title; // Assumes saved as title by auto-save
+      const fileName = artifact.title;
 
       switch (artifact.language) {
         case 'bash':
@@ -159,7 +154,6 @@ export function MessageArtifact({ artifact, messageId, index }: MessageArtifactP
         setMode('preview');
       }
     } catch (error: any) {
-      console.error('Failed to run artifact:', error);
       setOutput(`Error: ${error.message || 'Unknown error'}`);
       setMode('preview');
     } finally {
@@ -180,42 +174,34 @@ export function MessageArtifact({ artifact, messageId, index }: MessageArtifactP
 
     setIsFixingMermaid(true);
     try {
-      // Call AI to fix the mermaid code
       const fixedCode = await fixMermaidCode(
-        currentCode, // Use currentCode instead of artifact.code
+        currentCode,
         errorMessage,
         selectedModel
       );
 
       if (fixedCode && fixedCode !== currentCode) {
-        // Use editArtifact to update the code in the message
         const success = await editArtifact(
           messageId,
           artifact.title,
           fixedCode,
           artifact.language,
-          currentCode // Use currentCode as the original to match
+          currentCode
         );
 
         if (success) {
-          console.log('[MessageArtifact] Successfully fixed mermaid diagram');
-          // Immediately update local state to re-render the Mermaid component
           setCurrentCode(fixedCode);
-          // Toggle mode to force Mermaid to re-render with new code
           setMode('code');
           setTimeout(() => setMode('preview'), 50);
           showToast('Diagram fixed successfully', 'success');
           refetchFiles();
         } else {
-          console.error('[MessageArtifact] Failed to save fixed mermaid code');
           showToast('Failed to save the fixed diagram', 'error');
         }
       } else {
-        console.log('[MessageArtifact] AI could not fix the diagram or returned same code');
         showToast('AI could not fix the diagram. Try editing manually.', 'error');
       }
     } catch (error) {
-      console.error('[MessageArtifact] Error fixing mermaid diagram:', error);
       showToast('Error while fixing diagram', 'error');
     } finally {
       setIsFixingMermaid(false);
@@ -276,7 +262,7 @@ export function MessageArtifact({ artifact, messageId, index }: MessageArtifactP
                 label={mode === 'preview' ? 'Code' : 'Output'}
                 onClick={() => setMode(mode === 'preview' ? 'code' : 'preview')}
                 tooltip={mode === 'preview' ? 'Show Code' : 'Show Output'}
-                disabled={!output && mode === 'code'} // Only enable if we have output or are in preview mode
+                disabled={!output && mode === 'code'}
               />
               <ArtifactAction
                 icon={PlayIcon}

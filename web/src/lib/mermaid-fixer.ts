@@ -81,7 +81,6 @@ export async function fixMermaidCode(
     });
 
     if (!response.ok) {
-      console.error('[MermaidFixer] Failed to fix diagram:', response.statusText);
       return null;
     }
 
@@ -96,13 +95,11 @@ export async function fixMermaidCode(
         .replace(/\s*```$/g, '')
         .trim();
 
-      console.log('[MermaidFixer] Successfully fixed diagram');
       return fixedCode;
     }
 
     return null;
   } catch (error) {
-    console.error('[MermaidFixer] Error fixing diagram:', error);
     return null;
   }
 }

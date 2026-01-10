@@ -26,7 +26,6 @@ interface APIKey {
   created_at: string;
 }
 
-// Check if initial setup is needed
 export function useCheckSetup() {
   return useQuery({
     queryKey: ['auth', 'setup'],
@@ -45,7 +44,6 @@ export function useCheckSetup() {
   });
 }
 
-// Initial setup - create first user
 export function useInitialSetup() {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
@@ -75,7 +73,6 @@ export function useInitialSetup() {
   });
 }
 
-// Login
 export function useLogin() {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
@@ -105,7 +102,6 @@ export function useLogin() {
   });
 }
 
-// Logout
 export function useLogout() {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
@@ -132,7 +128,6 @@ export function useLogout() {
   });
 }
 
-// Check authentication status
 export function useCheckAuth() {
   return useQuery({
     queryKey: ['auth', 'check'],
@@ -153,7 +148,6 @@ export function useCheckAuth() {
   });
 }
 
-// Create API key
 export function useCreateAPIKey() {
   const queryClient = useQueryClient();
 
@@ -181,7 +175,6 @@ export function useCreateAPIKey() {
   });
 }
 
-// List API keys
 export function useAPIKeys() {
   return useQuery({
     queryKey: ['auth', 'api-keys'],
@@ -199,7 +192,6 @@ export function useAPIKeys() {
   });
 }
 
-// Delete API key
 export function useDeleteAPIKey() {
   const queryClient = useQueryClient();
 

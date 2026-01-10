@@ -2,7 +2,6 @@ import { useUIStore } from '@/store';
 
 const API_BASE_URL = '/api';
 
-// Prompt for generating a concise conversation title
 const TITLE_GENERATION_PROMPT = `You are a title generator. Based on the conversation below, generate a very short, descriptive title (3-6 words max). 
 The title should capture the main topic or intent of the conversation.
 Respond with ONLY the title, no quotes, no punctuation at the end, no explanation.
@@ -14,7 +13,6 @@ Examples of good titles:
 - Travel Plans for Tokyo
 - Recipe for Chocolate Cake`;
 
-// Track which conversations have already had titles generated
 const generatedTitles = new Set<string>();
 
 /**
@@ -46,7 +44,6 @@ export async function generateConversationTitle(
     return null;
   }
 
-  // Mark as generating to prevent duplicate calls
   generatedTitles.add(conversationId);
 
   try {
@@ -74,7 +71,6 @@ export async function generateConversationTitle(
     });
 
     if (!response.ok) {
-      console.error('[TitleGenerator] Failed to generate title:', response.statusText);
       return null;
     }
 
@@ -92,7 +88,6 @@ export async function generateConversationTitle(
 
       if (title.length > 0) {
         // Set title directly without animation
-        console.log('[TitleGenerator] Setting title:', title);
         useUIStore.getState().setConversationTitle(conversationId, title);
         return title;
       }
@@ -100,7 +95,6 @@ export async function generateConversationTitle(
 
     return null;
   } catch (error) {
-    console.error('[TitleGenerator] Error generating title:', error);
     // Remove from set so it can be retried
     generatedTitles.delete(conversationId);
     return null;

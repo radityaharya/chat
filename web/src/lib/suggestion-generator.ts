@@ -3,11 +3,9 @@ import { useUIStore } from '@/store';
 
 const API_BASE_URL = '/api';
 
-// Prompt for generating conversation suggestions
 const SUGGESTION_GENERATION_PROMPT = `Generate suggestions in JSON format.
 You are a suggestion generator. 
 Based on the conversation history, generate 3-4 concise, relevant follow-up questions or actions in json format.
-These should be natural continuations of the conversation.
 Keep them short (under 10 words).
 Ensure they are diverse.
 The output must be a JSON object matching the provided schema.`;
@@ -74,7 +72,6 @@ export async function generateConversationSuggestions(
     });
 
     if (!response.ok) {
-      console.error('[SuggestionGenerator] Failed to generate suggestions:', response.statusText);
       return [];
     }
 
@@ -96,13 +93,12 @@ export async function generateConversationSuggestions(
 
         return suggestions;
       } catch (e) {
-        console.error('[SuggestionGenerator] Failed to parse suggestions JSON:', e);
+        // Parse failed
       }
     }
 
     return [];
   } catch (error) {
-    console.error('[SuggestionGenerator] Error generating suggestions:', error);
     return [];
   }
 }

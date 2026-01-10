@@ -123,7 +123,6 @@ export function saveConversation(conversation: FullConversation): void {
       };
 
       await db.conversations.put(stored);
-      console.log(`[ConvManager] Saved: ${conversation.id} (${conversation.messages.length} messages)`);
     } catch (error) {
       console.error(`[ConvManager] Failed to save ${conversation.id}:`, error);
     }
@@ -171,7 +170,6 @@ export async function deleteConversation(id: string): Promise<void> {
   }
 
   await db.conversations.delete(id);
-  console.log(`[ConvManager] Deleted: ${id}`);
 }
 
 /**
@@ -198,8 +196,6 @@ export async function createConversation(id: string, title: string = 'New Chat')
   };
 
   await db.conversations.put(stored);
-  console.log(`[ConvManager] Created: ${id}`);
-
   return conversation;
 }
 
@@ -231,9 +227,6 @@ export async function editMessage(
     ...conv,
     searchText: buildSearchText(conv.title, conv.messages),
   });
-
-  console.log(`[ConvManager] Edited message ${messageId} in ${conversationId}`);
-
   return {
     id: conv.id,
     title: conv.title,
@@ -266,17 +259,15 @@ export async function editArtifactInMessage(
   // We need a more robust approach - pass in the original code to match
   // For now, try title-based matching if title exists, otherwise fail gracefully
 
-  if (!artifactId || artifactId.trim() === '') {
-    console.warn(`[ConvManager] Cannot edit untitled artifact - no identifier provided`);
-    return null;
+  if (!artifactId) {
+    return { id: conversationId, title: '', messages: [], checkpoints: [], updatedAt: 0 };
   }
-
-  const escapedTitle = escapeRegex(artifactId);
-
   // Artifacts can be in two formats:
   // 1. ```language title\ncode\n```
   // 2. ```language:filename\ncode\n```
   // We need to match both
+
+  const escapedTitle = escapeRegex(artifactId);
 
   // Pattern 1: ```lang title
   const pattern1 = new RegExp(
@@ -298,9 +289,7 @@ export async function editArtifactInMessage(
   }
 
   if (newContent === message.content) {
-    // No match found - artifact might have a different format
-    console.warn(`[ConvManager] Artifact ${artifactId} not found in message ${messageId}`);
-    return null;
+    return { id: conversationId, title: '', messages: [], checkpoints: [], updatedAt: 0 };
   }
 
   // Update the message
@@ -316,9 +305,6 @@ export async function editArtifactInMessage(
     ...conv,
     searchText: buildSearchText(conv.title, conv.messages),
   });
-
-  console.log(`[ConvManager] Edited artifact ${artifactId} in message ${messageId}`);
-
   return {
     id: conv.id,
     title: conv.title,
@@ -358,8 +344,7 @@ export async function editArtifactByCode(
   const newContent = message.content.replace(pattern, `$1${newCode}$2`);
 
   if (newContent === message.content) {
-    console.warn(`[ConvManager] Artifact code block not found in message ${messageId}`);
-    return null;
+    return { id: conversationId, title: '', messages: [], checkpoints: [], updatedAt: 0 };
   }
 
   // Update the message
@@ -375,9 +360,6 @@ export async function editArtifactByCode(
     ...conv,
     searchText: buildSearchText(conv.title, conv.messages),
   });
-
-  console.log(`[ConvManager] Edited ${language} artifact by code match in message ${messageId}`);
-
   return {
     id: conv.id,
     title: conv.title,
@@ -415,7 +397,6 @@ export async function flushAllPendingSaves(): Promise<void> {
   // Note: We'd need to track pending data to actually save here
   // For now, the debounced saves will be lost on hard refresh
   // In production, you'd want to queue the actual data
-  console.log(`[ConvManager] Flush requested for ${pendingIds.length} pending saves`);
 }
 
 // Register cleanup on page unload
@@ -440,13 +421,11 @@ const ATTACHMENT_CACHE_DIR = 'attachment-cache';
  */
 async function getOPFSRoot(): Promise<FileSystemDirectoryHandle | null> {
   if (typeof navigator === 'undefined' || !navigator.storage?.getDirectory) {
-    console.warn('[OPFS] Origin Private File System not available');
     return null;
   }
   try {
     return await navigator.storage.getDirectory();
   } catch (error) {
-    console.error('[OPFS] Failed to get root directory:', error);
     return null;
   }
 }
@@ -461,7 +440,6 @@ async function getAttachmentCacheDir(): Promise<FileSystemDirectoryHandle | null
   try {
     return await root.getDirectoryHandle(ATTACHMENT_CACHE_DIR, { create: true });
   } catch (error) {
-    console.error('[OPFS] Failed to get cache directory:', error);
     return null;
   }
 }
@@ -516,9 +494,8 @@ export async function cacheAttachmentBlob(url: string, blob: Blob): Promise<void
     const writable = await fileHandle.createWritable();
     await writable.write(blob);
     await writable.close();
-    console.log(`[OPFS] Cached attachment: ${key} (${blob.size} bytes)`);
   } catch (error) {
-    console.error(`[OPFS] Failed to cache attachment ${key}:`, error);
+    // Cache failed
   }
 }
 
@@ -535,7 +512,6 @@ export async function cacheAttachmentFromUrl(url: string): Promise<Blob | null> 
     // Fetch from backend
     const response = await fetch(url, { credentials: 'include' });
     if (!response.ok) {
-      console.error(`[OPFS] Failed to fetch attachment: ${response.status}`);
       return null;
     }
 
@@ -543,7 +519,6 @@ export async function cacheAttachmentFromUrl(url: string): Promise<Blob | null> 
     await cacheAttachmentBlob(url, blob);
     return blob;
   } catch (error) {
-    console.error(`[OPFS] Failed to fetch and cache attachment:`, error);
     return null;
   }
 }
@@ -595,7 +570,6 @@ export async function deleteAttachmentCache(url: string): Promise<void> {
   const key = getCacheKey(url);
   try {
     await cacheDir.removeEntry(key);
-    console.log(`[OPFS] Removed cached attachment: ${key}`);
   } catch {
     // File might not exist, ignore
   }
@@ -610,9 +584,8 @@ export async function clearAttachmentCache(): Promise<void> {
 
   try {
     await root.removeEntry(ATTACHMENT_CACHE_DIR, { recursive: true });
-    console.log('[OPFS] Cleared attachment cache');
   } catch (error) {
-    console.error('[OPFS] Failed to clear cache:', error);
+    // Clear failed
   }
 }
 
@@ -637,7 +610,7 @@ export async function getAttachmentCacheStats(): Promise<{ count: number; totalS
       }
     }
   } catch (error) {
-    console.error('[OPFS] Failed to get cache stats:', error);
+    // Stats failed
   }
 
   return { count, totalSize };
@@ -672,9 +645,6 @@ export async function precacheConversationAttachments(messages: Message[]): Prom
   }
 
   if (attachmentUrls.length === 0) return;
-
-  console.log(`[OPFS] Pre-caching ${attachmentUrls.length} attachments...`);
-
   // Cache in parallel (with limit to avoid overwhelming)
   const batchSize = 3;
   for (let i = 0; i < attachmentUrls.length; i += batchSize) {

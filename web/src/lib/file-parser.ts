@@ -110,7 +110,6 @@ export async function parseFile(file: File): Promise<ParsedFile> {
     };
 
   } catch (error) {
-    console.error(`Error parsing file ${filename}:`, error);
     return {
       filename,
       type,

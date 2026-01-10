@@ -615,17 +615,13 @@ export const ChatMessage = memo(function ChatMessage({ message, onRegenerate, on
     </Message>
   );
 }, (prevProps, nextProps) => {
+  if (prevProps.message === nextProps.message) return true;
 
-  // Custom comparison for optimal memoization
-  // Only re-render when these specific things change:
-
-  // 1. Message content/state changed
   if (prevProps.message.content !== nextProps.message.content) return false;
   if (prevProps.message.streaming !== nextProps.message.streaming) return false;
   if (prevProps.message.id !== nextProps.message.id) return false;
   if (prevProps.message.role !== nextProps.message.role) return false;
 
-  // 2. Parts (tool calls) changed - use shallow comparison for speed
   const prevParts = prevProps.message.parts;
   const nextParts = nextProps.message.parts;
   if (prevParts?.length !== nextParts?.length) return false;
@@ -636,13 +632,9 @@ export const ChatMessage = memo(function ChatMessage({ message, onRegenerate, on
     }
   }
 
-  // 3. Images changed
   if (prevProps.message.images?.length !== nextProps.message.images?.length) return false;
-
-  // 4. Attachments changed
   if (prevProps.message.attachments?.length !== nextProps.message.attachments?.length) return false;
 
-  // Callbacks are stable (useCallback in parent), so skip comparing them
   return true;
 });
 

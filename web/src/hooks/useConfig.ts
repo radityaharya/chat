@@ -9,7 +9,6 @@ interface UserConfig {
   data: any;
 }
 
-// Fetch user config
 export function useConfig() {
   const apiKey = useApiKey();
   const setSelectedModel = useSetSelectedModel();
@@ -27,25 +26,21 @@ export function useConfig() {
 
       if (!response.ok) {
         const text = await response.text();
-        console.error('Fetch config error:', response.status, text);
         throw new Error(`Failed to fetch config: ${response.status} ${text}`);
       }
 
       const data = await response.json();
-
-      // Update store with fetched config
       if (data.default_model) {
         setSelectedModel(data.default_model);
       }
 
       return data;
     },
-    enabled: true, // Optimistic fetching, relying on backend auth check
+    enabled: true,
     retry: false,
   });
 }
 
-// Update user config
 export function useUpdateConfig() {
   const apiKey = useApiKey();
   const queryClient = useQueryClient();
@@ -64,7 +59,6 @@ export function useUpdateConfig() {
 
       if (!response.ok) {
         const text = await response.text();
-        console.error('Update config error:', response.status, text);
         throw new Error(`Failed to update config: ${response.status} ${text}`);
       }
 

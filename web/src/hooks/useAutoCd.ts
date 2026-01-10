@@ -16,14 +16,10 @@ export function useAutoCd() {
 
       const setupWorkspace = async () => {
         try {
-          // Ensure container is ready
           await workspaceApi.waitForReady();
-          // Create directory if it doesn't exist AND cd into it
           await runCommand({ command: `mkdir -p ${workspacePath} && cd ${workspacePath}`, silent: true });
-          // Manually update the store CWD since runCommand doesn't detect it for complex commands
           setCwd(workspacePath);
         } catch (error) {
-          console.error("Failed to auto-cd to workspace", error);
         }
       };
 

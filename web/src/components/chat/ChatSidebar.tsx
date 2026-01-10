@@ -38,7 +38,6 @@ interface ChatSidebarProps {
 export function ChatSidebar({ className, isOpen = true, onClose, isMobile = false, onOpenSystemPrompt, systemPromptActive = false, onLogout }: ChatSidebarProps) {
   const navigate = useNavigate();
 
-  // Combined selector - reduces from 4 subscriptions to 1
   const { conversations, activeId, createConversation, setActiveConversation } = useUIStore(useShallow((s) => ({
     conversations: s.conversations,
     activeId: s.activeConversationId,
@@ -55,7 +54,6 @@ export function ChatSidebar({ className, isOpen = true, onClose, isMobile = fals
   const [isSearching, setIsSearching] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
 
-  // Perform search against IndexedDB
   useEffect(() => {
     if (!search.trim()) {
       setSearchResults([]);
@@ -67,32 +65,28 @@ export function ChatSidebar({ className, isOpen = true, onClose, isMobile = fals
     const debounceTimer = setTimeout(async () => {
       try {
         const results = await searchConversations(search);
-        // Map back to format with extra match data
         setSearchResults(results.map(r => ({
           id: r.id,
           title: r.title,
           messages: [],
           checkpoints: [],
           updatedAt: r.updatedAt,
-          matches: r.matches, // Pass through matches
+          matches: r.matches,
         })));
       } catch (err) {
-        console.error('Search failed:', err);
       } finally {
         setIsSearching(false);
       }
-    }, 150); // Debounce
+    }, 150);
 
     return () => clearTimeout(debounceTimer);
   }, [search]);
 
-  // Use search results when searching, otherwise use Zustand conversations
   const displayedChats = useMemo(() => {
     if (search.trim() && searchResults.length > 0) {
       return searchResults;
     }
     if (search.trim()) {
-      // Fallback local filter
       return Object.values(conversations)
         .filter((c) => c.title.toLowerCase().includes(search.toLowerCase()))
         .sort((a, b) => b.updatedAt - a.updatedAt);
@@ -112,15 +106,11 @@ export function ChatSidebar({ className, isOpen = true, onClose, isMobile = fals
   }, [createConversation, navigate, isMobile, onClose]);
 
   const handleSelectChat = useCallback((chatId: string, messageId?: string) => {
-    // Set active conversation in store first
     setActiveConversation(chatId);
 
-    // Navigate with message hash if provided
     const to = `/c/${chatId}` + (messageId ? `?msg=${messageId}` : '');
     navigate({ to });
 
-    // On mobile, delay closing to ensure navigation/state updates complete first
-    // This prevents the sidebar close animation from interfering with conversation loading
     if (isMobile && onClose) {
       requestAnimationFrame(() => {
         onClose();
@@ -132,10 +122,8 @@ export function ChatSidebar({ className, isOpen = true, onClose, isMobile = fals
     if (!deleteId) return;
 
     try {
-      // Delete from backend first
       await deleteConversationWithSync(deleteId);
     } catch (error) {
-      console.error('Failed to delete conversation:', error);
     } finally {
       setDeleteId(null);
     }
@@ -222,7 +210,7 @@ export function ChatSidebar({ className, isOpen = true, onClose, isMobile = fals
                   </span>
                 </Button>
 
-                {/* 3-dot Menu - Absolute positioned */}
+                {/* 3-dot Menu */}
                 <div className={cn(
                   "absolute right-1 top-1/2 -translate-y-1/2",
                   isMobile || openMenuId === chat.id ? "opacity-100" : "opacity-0 group-hover:opacity-100 transition-opacity"

@@ -1,17 +1,3 @@
-/**
- * useActiveConversation - Lazy-loads conversation messages when conversation becomes active
- * 
- * This hook provides efficient conversation management by:
- * 1. Loading messages from IndexedDB only when a conversation becomes active
- * 2. Syncing messages back to IndexedDB on changes (debounced)
- * 3. Avoiding the Zustand persist JSON serialization bottleneck
- * 
- * OPTIMIZED for fast conversation switching:
- * - Fast path: messages already in memory = instant switch
- * - Slow path: fetch from IndexedDB, with sync updates on mobile
- * - Background attachment pre-caching
- */
-
 import { useEffect, useRef, startTransition } from 'react';
 import { flushSync } from 'react-dom';
 import { useUIStore } from '@/store';
@@ -27,17 +13,6 @@ import {
 const isMobileDevice = typeof navigator !== 'undefined' &&
   /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
 
-/**
- * Hook to manage active conversation loading
- * 
- * When activeConversationId changes:
- * 1. Loads full conversation from IndexedDB
- * 2. Updates Zustand state with messages
- * 3. Pre-caches attachments in OPFS for fast display
- * 
- * Uses version tracking to properly handle rapid conversation switches,
- * especially important on mobile where async operations may be interrupted.
- */
 export function useActiveConversationLoader() {
   const activeId = useUIStore((s) => s.activeConversationId);
   const isHydrated = useUIStore((s) => s.isHydrated);
@@ -50,21 +25,17 @@ export function useActiveConversationLoader() {
     // This makes switching back to previously loaded chats instant
     const existing = useUIStore.getState().conversations[activeId];
     if (existing?.messages?.length > 0) {
-      console.log(`[ActiveConvLoader] Fast path - ${existing.messages.length} messages already in memory`);
       return;
     }
 
     // SLOW PATH: Need to fetch from IndexedDB
     const loadConversation = async () => {
-      const startTime = performance.now();
-
       try {
         const fullConv = await loadFullConversation(activeId);
 
         // Check if this is still the active conversation (user may have switched during load)
         const currentActiveId = useUIStore.getState().activeConversationId;
         if (currentActiveId !== activeId) {
-          console.log(`[ActiveConvLoader] Aborted - user switched conversations`);
           return;
         }
 
@@ -94,16 +65,13 @@ export function useActiveConversationLoader() {
             startTransition(updateState);
           }
 
-          const elapsed = performance.now() - startTime;
-          console.log(`[ActiveConvLoader] Loaded ${fullConv.messages.length} messages in ${elapsed.toFixed(1)}ms`);
-
           // Pre-cache attachments in background
           requestIdleCallback(() => {
             precacheConversationAttachments(fullConv.messages).catch(() => { });
           }, { timeout: 5000 });
         }
       } catch (error) {
-        console.error(`[ActiveConvLoader] Failed to load:`, error);
+        // console.error(`[ActiveConvLoader] Failed to load:`, error);
       }
     };
 
@@ -111,14 +79,6 @@ export function useActiveConversationLoader() {
   }, [activeId, isHydrated]);
 }
 
-/**
- * Hook to save active conversation changes to IndexedDB
- * 
- * Watches for message changes and saves directly to IndexedDB,
- * bypassing Zustand's persist serialization.
- * 
- * OPTIMIZED: Only subscribes to active conversation, not all conversations
- */
 export function useConversationSaver() {
   const activeId = useUIStore((s) => s.activeConversationId);
   const isHydrated = useUIStore((s) => s.isHydrated);

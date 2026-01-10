@@ -103,8 +103,7 @@ export function useContainer() {
         setPending(false);
       }
     },
-    onError: (err) => {
-      console.error(`Command failed: ${err.message}`);
+    onError: () => {
     },
   });
 

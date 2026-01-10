@@ -114,7 +114,7 @@ const fileToBase64 = (file: File): Promise<string> => {
 
 // Send message with SSE streaming
 export function useSendMessage() {
-  // Combined selector - reduces from 6 subscriptions to 1
+  // useChat state
   const { apiKey, enabledTools, activeConversationId, uiResponseEnabled } = useUIStore(useShallow((s) => ({
     apiKey: s.apiKey,
     enabledTools: s.enabledTools,
@@ -122,7 +122,6 @@ export function useSendMessage() {
     uiResponseEnabled: s.uiResponseEnabled,
   })));
 
-  // Use direct store access for actions to avoid subscription overhead
   const addMessage = useCallback((msg: Message) => {
     useUIStore.getState().addMessage(msg);
   }, []);
@@ -146,12 +145,9 @@ export function useSendMessage() {
   const [isStreaming, setIsStreaming] = useState(false);
   const abortControllerRef = useRef<AbortController | null>(null);
 
-  // Helper to execute tools
   const executeTool = async (name: string, args: any): Promise<any> => {
     const tool = tools[name];
-    if (!tool) {
-      throw new Error(`Tool ${name} not found`);
-    }
+    if (!tool) throw new Error(`Tool ${name} not found`);
     try {
       return await tool.execute(args);
     } catch (error: any) {
@@ -159,7 +155,6 @@ export function useSendMessage() {
     }
   };
 
-  // Function to stop streaming
   const stopStreaming = () => {
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();
@@ -173,43 +168,76 @@ export function useSendMessage() {
     model: string,
     assistantMessageId: string
   ) => {
-    // Allow streaming with session auth even without API key
-    // The backend will validate the session
-
-    let assistantContent = '';
-    let assistantReasoning = '';
-    let isDone = false;
-    let iterationCount = 0;
-    let allImages: any[] = [];
-    const MAX_ITERATIONS = 20;
-
-    // Track all parts (text + tools) in order for interleaved rendering
-    let allParts: any[] = [];
-    let iterationContentStart = 0; // Track where content started for this iteration
-
-    // Track accumulated usage across tool iterations
-    let accumulatedUsage: NonNullable<Message['usage']> = {
-      promptTokens: 0,
-      completionTokens: 0,
-      totalTokens: 0,
-      cost: 0,
-      cachedTokens: 0,
-      reasoningTokens: 0
+    const streamState = {
+      content: '',
+      reasoning: '',
+      images: [] as any[],
+      parts: [] as any[],
+      usage: {
+        promptTokens: 0,
+        completionTokens: 0,
+        totalTokens: 0,
+        cost: 0,
+        cachedTokens: 0,
+        reasoningTokens: 0
+      } as NonNullable<Message['usage']>,
+      iterationContentStart: 0,
     };
 
-    // Helper to construct display content with reasoning
+    let isDone = false;
+    let iterationCount = 0;
+    const MAX_ITERATIONS = 20;
+
+    let lastUpdateTime = 0;
+    const UPDATE_THROTTLE_MS = 100;
+    let pendingUpdate = false;
+    let updateTimeoutId: NodeJS.Timeout | null = null;
+
     const getFullContent = () => {
-      if (assistantReasoning) {
-        if (assistantContent) {
-          return `<think>${assistantReasoning}</think>${assistantContent}`;
+      if (streamState.reasoning) {
+        if (streamState.content) {
+          return `<think>${streamState.reasoning}</think>${streamState.content}`;
         }
-        return `<think>${assistantReasoning}`;
+        return `<think>${streamState.reasoning}`;
       }
-      return assistantContent;
+      return streamState.content;
+    };
+
+    const flushToStore = (streaming: boolean) => {
+      const fullContent = getFullContent();
+      updateMessage(
+        assistantMessageId,
+        fullContent,
+        streaming,
+        streamState.parts.length > 0 ? streamState.parts : undefined,
+        streamState.images.length > 0 ? streamState.images : undefined,
+        streamState.usage
+      );
+      lastUpdateTime = Date.now();
+      pendingUpdate = false;
+    };
+
+    const scheduleUpdate = () => {
+      const now = Date.now();
+      const timeSinceLastUpdate = now - lastUpdateTime;
+
+      if (timeSinceLastUpdate >= UPDATE_THROTTLE_MS) {
+        if (updateTimeoutId) {
+          clearTimeout(updateTimeoutId);
+          updateTimeoutId = null;
+        }
+        flushToStore(true);
+      } else if (!pendingUpdate) {
+        pendingUpdate = true;
+        const delay = UPDATE_THROTTLE_MS - timeSinceLastUpdate;
+        updateTimeoutId = setTimeout(() => {
+          flushToStore(true);
+          updateTimeoutId = null;
+        }, delay);
+      }
     };
 
     try {
-
       while (!isDone && iterationCount < MAX_ITERATIONS) {
         iterationCount++;
 
@@ -219,7 +247,7 @@ export function useSendMessage() {
             'Content-Type': 'application/json',
             ...(apiKey ? { 'Authorization': `Bearer ${apiKey}` } : {}),
           },
-          credentials: 'include', // Include cookies for session auth
+          credentials: 'include',
           body: JSON.stringify({
             model,
             messages: apiMessages,
@@ -295,7 +323,6 @@ export function useSendMessage() {
             try {
               const parsed = JSON.parse(data);
 
-              // Capture usage if available (usually in the last chunk or separate chunk)
               if (parsed.usage) {
                 currentIterationUsage = {
                   promptTokens: parsed.usage.prompt_tokens,
@@ -305,7 +332,6 @@ export function useSendMessage() {
                   cachedTokens: parsed.usage.prompt_tokens_details?.cached_tokens,
                   reasoningTokens: parsed.usage.completion_tokens_details?.reasoning_tokens,
                 };
-                console.log('[Stream] Received usage data for this iteration:', currentIterationUsage);
               }
 
               const choice = parsed.choices?.[0];
@@ -315,13 +341,12 @@ export function useSendMessage() {
 
               if (delta?.reasoning_content || delta?.reasoning) {
                 const reasoningChunk = delta.reasoning_content || delta.reasoning;
-                assistantReasoning += reasoningChunk;
-                console.log('[Stream] Reasoning chunk:', reasoningChunk, '| Total reasoning:', assistantReasoning.substring(0, 50) + '...');
+                streamState.reasoning += reasoningChunk;
                 shouldUpdate = true;
               }
 
               if (delta?.content) {
-                assistantContent += delta.content;
+                streamState.content += delta.content;
                 shouldUpdate = true;
               }
 
@@ -365,20 +390,23 @@ export function useSendMessage() {
               }
 
               if (shouldUpdate) {
-                const fullContent = getFullContent();
-
-                // Calculate total usage so far (accumulated + current iteration)
-                const currentTotalUsage = { ...accumulatedUsage };
+                // Update usage in ref
                 if (currentIterationUsage) {
-                  currentTotalUsage.promptTokens += currentIterationUsage.promptTokens;
-                  currentTotalUsage.completionTokens += currentIterationUsage.completionTokens;
-                  currentTotalUsage.totalTokens += currentIterationUsage.totalTokens;
-                  currentTotalUsage.cost = (currentTotalUsage.cost || 0) + (currentIterationUsage.cost || 0);
-                  currentTotalUsage.cachedTokens = (currentTotalUsage.cachedTokens || 0) + (currentIterationUsage.cachedTokens || 0);
-                  currentTotalUsage.reasoningTokens = (currentTotalUsage.reasoningTokens || 0) + (currentIterationUsage.reasoningTokens || 0);
+                  const totalUsage = streamState.usage;
+                  streamState.usage = {
+                    promptTokens: totalUsage.promptTokens + currentIterationUsage.promptTokens,
+                    completionTokens: totalUsage.completionTokens + currentIterationUsage.completionTokens,
+                    totalTokens: totalUsage.totalTokens + currentIterationUsage.totalTokens,
+                    cost: (totalUsage.cost || 0) + (currentIterationUsage.cost || 0),
+                    cachedTokens: (totalUsage.cachedTokens || 0) + (currentIterationUsage.cachedTokens || 0),
+                    reasoningTokens: (totalUsage.reasoningTokens || 0) + (currentIterationUsage.reasoningTokens || 0),
+                  };
                 }
 
-                updateMessage(assistantMessageId, fullContent, true, undefined, [...allImages, ...Object.values(imageCalls)], currentTotalUsage);
+                // Update images in ref
+                streamState.images = [...streamState.images.slice(0, streamState.images.length - Object.keys(imageCalls).length), ...Object.values(imageCalls)];
+
+                scheduleUpdate();
               }
 
               if (delta?.tool_calls) {
@@ -393,51 +421,55 @@ export function useSendMessage() {
                 }
               }
             } catch (e) {
-              console.error('Failed to parse SSE data:', e);
+              // Ignore parse errors for malformed SSE lines
             }
           }
         }
 
         // Merge current iteration usage into accumulated usage
         if (currentIterationUsage) {
-          accumulatedUsage.promptTokens += currentIterationUsage.promptTokens;
-          accumulatedUsage.completionTokens += currentIterationUsage.completionTokens;
-          accumulatedUsage.totalTokens += currentIterationUsage.totalTokens;
-          accumulatedUsage.cost = (accumulatedUsage.cost || 0) + (currentIterationUsage.cost || 0);
-          accumulatedUsage.cachedTokens = (accumulatedUsage.cachedTokens || 0) + (currentIterationUsage.cachedTokens || 0);
-          accumulatedUsage.reasoningTokens = (accumulatedUsage.reasoningTokens || 0) + (currentIterationUsage.reasoningTokens || 0);
+          const totalUsage = streamState.usage;
+          streamState.usage = {
+            promptTokens: totalUsage.promptTokens + currentIterationUsage.promptTokens,
+            completionTokens: totalUsage.completionTokens + currentIterationUsage.completionTokens,
+            totalTokens: totalUsage.totalTokens + currentIterationUsage.totalTokens,
+            cost: (totalUsage.cost || 0) + (currentIterationUsage.cost || 0),
+            cachedTokens: (totalUsage.cachedTokens || 0) + (currentIterationUsage.cachedTokens || 0),
+            reasoningTokens: (totalUsage.reasoningTokens || 0) + (currentIterationUsage.reasoningTokens || 0),
+          };
         }
 
         const finalToolCalls = Object.values(toolCalls);
         const finalImages = Object.values(imageCalls);
-        allImages = [...allImages, ...finalImages];
+        streamState.images = [...streamState.images, ...finalImages];
 
         if (finalToolCalls.length === 0) {
           isDone = true;
-          // Add final text content as a text part if there's content after the last tool calls
-          const finalContent = assistantContent.substring(iterationContentStart);
-          if (finalContent.trim() && allParts.length > 0) {
-            allParts.push({
+          const finalContent = streamState.content.substring(streamState.iterationContentStart);
+          if (finalContent.trim() && streamState.parts.length > 0) {
+            streamState.parts.push({
               type: 'text' as const,
               content: finalContent,
             });
           }
-          updateMessage(assistantMessageId, getFullContent(), false, allParts.length > 0 ? allParts : undefined, allImages, accumulatedUsage);
+          if (updateTimeoutId) {
+            clearTimeout(updateTimeoutId);
+            updateTimeoutId = null;
+          }
+          flushToStore(false);
           break;
         }
-        // Capture text content that came after previous tool calls (if any)
-        // This is the LLM's response to the previous tool results
-        if (allParts.length > 0) {
-          const iterationContent = assistantContent.substring(iterationContentStart);
+
+        if (streamState.parts.length > 0) {
+          const iterationContent = streamState.content.substring(streamState.iterationContentStart);
           if (iterationContent.trim()) {
-            allParts.push({
+            streamState.parts.push({
               type: 'text' as const,
               content: iterationContent,
             });
           }
         }
 
-        // Handle tool calls first
         const toolPartsForUI = finalToolCalls.map(tc => {
           let args = {};
           try { args = JSON.parse(tc.arguments); } catch (e) { }
@@ -452,16 +484,16 @@ export function useSendMessage() {
         });
 
         // Add tool parts to allParts first
-        allParts.push(...toolPartsForUI);
+        streamState.parts.push(...toolPartsForUI);
 
-        // Mark where next iteration's content starts (content will be captured after tool results come back)
-        iterationContentStart = assistantContent.length;
+        streamState.iterationContentStart = streamState.content.length;
 
-        updateMessage(assistantMessageId, getFullContent(), true, allParts, allImages, accumulatedUsage);
+        // Flush tool parts to store
+        flushToStore(true);
 
         apiMessages.push({
           role: 'assistant',
-          content: assistantContent || null,
+          content: streamState.content || null,
           tool_calls: finalToolCalls.map(tc => ({
             id: tc.id,
             type: 'function',
@@ -474,9 +506,7 @@ export function useSendMessage() {
 
         const toolOutputs = await Promise.all(finalToolCalls.map(async (tc) => {
           let args = {};
-          try { args = JSON.parse(tc.arguments); } catch (e) {
-            console.error("Failed to parse tool arguments", e);
-          }
+          try { args = JSON.parse(tc.arguments); } catch (e) { }
 
           let result;
           let isError = false;
@@ -493,22 +523,22 @@ export function useSendMessage() {
           }
 
           // Update the tool part in allParts (find by toolCallId)
-          const partIndex = allParts.findIndex((p: any) => p.toolCallId === tc.id);
+          const partIndex = streamState.parts.findIndex((p: any) => p.toolCallId === tc.id);
           if (partIndex !== -1) {
-            allParts[partIndex] = {
-              ...allParts[partIndex],
+            streamState.parts[partIndex] = {
+              ...streamState.parts[partIndex],
               state: isError ? 'output-error' : 'output-available',
               output: result,
               errorText: isError ? JSON.stringify(result.error) : undefined,
             };
           }
 
-          updateMessage(assistantMessageId, getFullContent(), true, [...allParts], allImages, accumulatedUsage);
+          flushToStore(true);
 
           return {
             tool_call_id: tc.id,
             role: 'tool',
-            name: tc.name, // Usually not required for 'tool' role but helpful
+            name: tc.name,
             content: JSON.stringify(result)
           };
         }));
@@ -519,20 +549,27 @@ export function useSendMessage() {
       } // while loop
 
       if (iterationCount >= MAX_ITERATIONS) {
-        updateMessage(assistantMessageId, getFullContent() + "\n\n[System: Max tool iterations reached]", false, undefined, undefined, accumulatedUsage);
+        streamState.content += "\n\n[System: Max tool iterations reached]";
+        flushToStore(false);
       }
 
     } catch (error) {
+      if (updateTimeoutId) {
+        clearTimeout(updateTimeoutId);
+        updateTimeoutId = null;
+      }
+
       if (error instanceof Error && error.name === 'AbortError') {
-        console.log('Stream aborted by user');
-        updateMessage(assistantMessageId, getFullContent(), false, allParts.length > 0 ? allParts : undefined, allImages, accumulatedUsage);
+        flushToStore(false);
       } else {
-        console.error('Error sending message:', error);
         const errorMessage = error instanceof Error ? error.message : 'Failed to get response';
         updateMessage(assistantMessageId, `Error: ${errorMessage}`, false);
       }
       throw error;
     } finally {
+      if (updateTimeoutId) {
+        clearTimeout(updateTimeoutId);
+      }
       abortControllerRef.current = null;
       setIsStreaming(false);
     }
@@ -551,11 +588,8 @@ export function useSendMessage() {
     abortControllerRef.current = new AbortController();
     setIsStreaming(true);
 
-    // Also upload attachments to workspace if conversation is active
     if (activeConversationId && attachments && attachments.length > 0) {
-      // Start all uploads and wait for them so the LLM can see them in the system prompt
       try {
-        // Ensure container is ready before uploading
         await workspaceApi.waitForReady();
 
         await Promise.all(attachments.map(file =>
@@ -564,11 +598,10 @@ export function useSendMessage() {
         // Update file list in cache
         queryClient.invalidateQueries({ queryKey: ['workspace-files', activeConversationId] });
       } catch (err) {
-        console.error("Failed to upload attachments to workspace", err);
+        // Silent fail for attachment uploads
       }
     }
 
-    // Clear suggestions
     if (activeConversationId) {
       useUIStore.getState().setConversationSuggestions(activeConversationId, []);
     }
@@ -582,10 +615,8 @@ export function useSendMessage() {
       }));
 
     if (systemPrompt && systemPrompt.trim()) {
-      // Always append UI response guide to user's system prompt if enabled
       let fullSystemPrompt = systemPrompt + GLOBAL_SYSTEM_PROMPT + (uiResponseEnabled ? UI_RESPONSE_GUIDE : '');
 
-      // Inject workspace files if available
       if (activeConversationId) {
         try {
           const files = await workspaceApi.listFiles(activeConversationId);
@@ -594,16 +625,14 @@ export function useSendMessage() {
             fullSystemPrompt += `\n\nCurrent Workspace Files:\n${fileList}`;
           }
         } catch (e) {
-          console.error("Failed to inject file list", e);
+          // Silent fail
         }
       }
 
       currentMessages = [{ role: 'system', content: fullSystemPrompt }, ...currentMessages];
     } else {
-      // If no custom system prompt, just use the UI guide if enabled
       let prompt = uiResponseEnabled ? UI_RESPONSE_GUIDE.trim() : '';
 
-      // Inject workspace files if available
       if (activeConversationId) {
         try {
           const files = await workspaceApi.listFiles(activeConversationId);
@@ -612,13 +641,12 @@ export function useSendMessage() {
             prompt += `\n\nCurrent Workspace Files:\n${fileList}`;
           }
         } catch (e) {
-          console.error("Failed to inject file list", e);
+          // Silent fail
         }
       }
       currentMessages = [{ role: 'system', content: prompt }, ...currentMessages];
     }
 
-    // Process attachments
     const { parsedFiles, combinedContent } = attachments && attachments.length > 0
       ? await parseFiles(attachments)
       : { parsedFiles: [], combinedContent: '' };
@@ -680,7 +708,7 @@ export function useSendMessage() {
               };
             }
           } catch (error) {
-            console.error('Failed to upload image:', error);
+            // Ignore upload errors for images
           }
 
           // Fallback to blob URL if upload fails
@@ -692,7 +720,6 @@ export function useSendMessage() {
         })
     );
 
-    // Non-image attachments still use parsed content
     const nonImageAttachments = parsedFiles
       .filter(pf => !pf.type.startsWith('image/'))
       .map((pf, index) => {
@@ -705,7 +732,6 @@ export function useSendMessage() {
         };
       });
 
-    // UI Updates
     const userMessage: Message = {
       id: `user-${Date.now()}`,
       role: 'user',
@@ -728,8 +754,6 @@ export function useSendMessage() {
 
     await streamResponse(currentMessages, model, assistantMessageId);
 
-    // Generate title in background after first message exchange
-    // Use setTimeout to not block the main flow
     setTimeout(async () => {
       try {
         const currentConvId = useUIStore.getState().activeConversationId;
@@ -747,7 +771,7 @@ export function useSendMessage() {
           }
         }
       } catch (error) {
-        console.error('[Chat] Title generation failed:', error);
+        // Title generation failed silently
       }
 
       // Generate suggestions
@@ -756,14 +780,12 @@ export function useSendMessage() {
         if (currentConvId) {
           const conversation = useUIStore.getState().conversations[currentConvId];
           const messages = conversation?.messages || [];
-          // Need at least a few messages for context
           if (messages.length >= 2) {
             const assistantMsg = conversation?.messages.find(m => m.id === assistantMessageId);
             if (assistantMsg && !assistantMsg.streaming) {
-              // Prepare messages in format expected by generator
               const history = messages.map(m => ({
                 role: m.role,
-                content: typeof m.content === 'string' ? m.content : 'Image/Attachment' // Simplify for suggestion generator
+                content: typeof m.content === 'string' ? m.content : 'Image/Attachment'
               }));
 
               await generateConversationSuggestions(
@@ -776,7 +798,7 @@ export function useSendMessage() {
           }
         }
       } catch (error) {
-        console.error('[Chat] Suggestion generation failed:', error);
+        // Suggestion generation failed silently
       }
     }, 100);
   };
@@ -802,7 +824,6 @@ export function useSendMessage() {
     // Safety check: is it assistant?
     const targetMsg = conversationHistory[index];
     if (targetMsg.role !== 'assistant') {
-      console.warn("Regenerate called on non-assistant message");
       return;
     }
 
@@ -814,13 +835,15 @@ export function useSendMessage() {
     abortControllerRef.current = new AbortController();
     setIsStreaming(true);
 
-    // Prepare API messages
-    let apiMessages = newHistory
+    const apiMessagesList = newHistory
       .filter(m => !m.streaming)
       .map(m => ({
         role: m.role,
         content: m.content as string | Array<any>,
       }));
+
+    let apiMessages: any[] = [];
+    let prompt = '';
 
     if (systemPrompt && systemPrompt.trim()) {
       // Always append UI response guide to user's system prompt if enabled
@@ -835,14 +858,14 @@ export function useSendMessage() {
             fullSystemPrompt += `\n\nCurrent Workspace Files:\n${fileList}`;
           }
         } catch (e) {
-          console.error("Failed to inject file list", e);
+          // Silent fail
         }
       }
 
-      apiMessages = [{ role: 'system', content: fullSystemPrompt }, ...apiMessages];
+      apiMessages = [{ role: 'system', content: fullSystemPrompt }, ...apiMessagesList];
     } else {
       // If no custom system prompt, just use the UI guide if enabled
-      let prompt = uiResponseEnabled ? UI_RESPONSE_GUIDE.trim() : '';
+      prompt = uiResponseEnabled ? UI_RESPONSE_GUIDE.trim() : '';
 
       // Inject workspace files if available
       if (activeConversationId) {
@@ -853,11 +876,11 @@ export function useSendMessage() {
             prompt += `\n\nCurrent Workspace Files:\n${fileList}`;
           }
         } catch (e) {
-          console.error("Failed to inject file list", e);
+          // Silent fail
         }
       }
 
-      apiMessages = [{ role: 'system', content: prompt }, ...apiMessages];
+      apiMessages = [{ role: 'system', content: prompt }, ...apiMessagesList];
     }
 
     // Add new assistant placeholder
@@ -892,13 +915,12 @@ export function useSendMessage() {
               currentConvId,
               model,
               history,
-              // apiKey might be null if using session, store has it
               useUIStore.getState().apiKey
             );
           }
         }
       } catch (error) {
-        console.error('[Chat] Suggestion generation failed:', error);
+        // Silent fail
       }
     }, 100);
   };

@@ -86,7 +86,6 @@ class DebouncedWriter {
       this.pending.delete(conv.id);
       try {
         await db.conversations.put(conv);
-        console.log(`[ChatDB] Saved conversation: ${conv.id}`);
       } catch (e) {
         console.error('[ChatDB] Failed to write conversation:', e);
       }
@@ -153,7 +152,6 @@ export function createConversationStorage(): StateStorage {
   return {
     getItem: async (_name: string): Promise<string | null> => {
       try {
-        console.log('[ChatDB] Loading state from IndexedDB (metadata only)...');
 
         // Load settings
         const settingsRecord = await db.settings.get('main');
@@ -175,8 +173,6 @@ export function createConversationStorage(): StateStorage {
             _hasData: true, // Marker to indicate data exists in IndexedDB
           };
         }
-
-        console.log(`[ChatDB] Loaded metadata for ${conversations.length} conversations`);
 
         // Reconstruct the full state expected by Zustand
         const state: PersistedState = {
@@ -221,7 +217,6 @@ export function createConversationStorage(): StateStorage {
         const toDelete = [...existingIds].filter(id => !newIds.has(id));
         if (toDelete.length > 0) {
           await db.conversations.bulkDelete(toDelete);
-          console.log(`[ChatDB] Deleted ${toDelete.length} conversations`);
         }
 
         // Handle NEW conversations that don't exist in IndexedDB yet
@@ -242,7 +237,6 @@ export function createConversationStorage(): StateStorage {
               searchText: buildSearchText(conv.title, conv.messages || []),
             };
             await db.conversations.put(stored);
-            console.log(`[ChatDB] Created new conversation: ${id}`);
           } else if (existing.title !== conv.title && id !== settings.activeConversationId) {
             // Title changed - update just the title
             // Skip for active conversation as useConversationSaver handles it (debounced)
@@ -263,7 +257,6 @@ export function createConversationStorage(): StateStorage {
       try {
         await db.conversations.clear();
         await db.settings.clear();
-        console.log('[ChatDB] Cleared all data');
       } catch (e) {
         console.error('[ChatDB] Failed to clear storage:', e);
       }
@@ -422,7 +415,6 @@ export async function importData(data: {
     await db.conversations.bulkPut(data.conversations);
     await db.settings.put({ key: 'main', value: data.settings });
   });
-  console.log(`[ChatDB] Imported ${data.conversations.length} conversations`);
 }
 
 /**
@@ -430,7 +422,6 @@ export async function importData(data: {
  */
 export async function clearConversationData(): Promise<void> {
   await db.conversations.clear();
-  console.log('[ChatDB] Conversation history cleared');
 }
 
 /**
@@ -439,7 +430,6 @@ export async function clearConversationData(): Promise<void> {
 export async function clearAllData(): Promise<void> {
   await db.conversations.clear();
   await db.settings.clear();
-  console.log('[ChatDB] All data cleared');
 }
 
 /**

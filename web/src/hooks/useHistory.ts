@@ -4,10 +4,6 @@ import { useShallow } from 'zustand/react/shallow';
 import type { Conversation } from '../store';
 import { loadFullConversation } from '@/lib/conversation-manager';
 
-/**
- * Generate a full hash for a conversation to detect any changes.
- * Hashes all message content to properly detect edits anywhere in the conversation.
- */
 function generateConversationHash(conv: Conversation): string {
   // Build a complete signature of all message content
   const messageSummary = conv.messages
@@ -67,7 +63,6 @@ interface DeltaSyncResponse {
 }
 
 export function useHistory() {
-  // Combined selector - reduces from 6 subscriptions to 1
   const { syncStatus, lastSyncedAt, syncError } = useUIStore(useShallow((s) => ({
     syncStatus: s.syncStatus,
     lastSyncedAt: s.lastSyncedAt,
@@ -79,7 +74,6 @@ export function useHistory() {
   // Track local hashes to detect changes
   const localHashesRef = useRef<Map<string, string>>(new Map());
 
-  // Get actions directly from store to avoid subscription overhead
   const setSyncStatus = useCallback((status: 'idle' | 'syncing' | 'error') => {
     useUIStore.getState().setSyncStatus(status);
   }, []);
@@ -137,18 +131,14 @@ export function useHistory() {
       const toPush: ConversationHistory[] = [];
       const toPull: string[] = [];
 
-      // Check each local conversation - load full data from IndexedDB for syncing
       for (const conv of Object.values(currentConversations)) {
-        // Load full conversation from IndexedDB (since Zustand only has metadata)
         const fullConv = await loadFullConversation(conv.id);
         if (!fullConv) continue;
 
-        // Skip conversations that are currently streaming
         if (fullConv.messages.some(m => m.streaming)) {
           continue;
         }
 
-        // Create a complete conversation object for hashing and sync
         const completeConv: Conversation = {
           id: conv.id,
           title: conv.title,
@@ -172,7 +162,6 @@ export function useHistory() {
             created_at: new Date(conv.updatedAt).toISOString(),
           });
         } else if (localHash !== serverItem.hash) {
-          // Hash mismatch - need to sync
           if (conv.updatedAt > serverItem.updated_at) {
             // Local is newer - push
             toPush.push({
@@ -191,7 +180,6 @@ export function useHistory() {
         }
         // If hashes match, no sync needed
 
-        // Update local hash cache
         localHashesRef.current.set(conv.id, localHash);
       }
 
@@ -248,7 +236,6 @@ export function useHistory() {
         setConversations(mergedConversations);
       }
 
-      // Step 5: Handle server deletions
       if (deltaResponse.server_deleted && deltaResponse.server_deleted.length > 0) {
         const currentState = useUIStore.getState().conversations;
         const filtered = { ...currentState };
@@ -261,15 +248,12 @@ export function useHistory() {
       setSyncStatus('idle');
       setLastSyncedAt(Date.now());
 
-      console.log(`[History] Delta sync: pushed ${toPush.length}, pulled ${deltaResponse.pulled?.length || 0}`);
-
       return {
         pushed: toPush.length,
         pulled: deltaResponse.pulled?.length || 0,
       };
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      console.error('[History] Delta sync failed, falling back to full sync:', error);
 
       // Fall back to full sync on error
       try {
@@ -286,7 +270,6 @@ export function useHistory() {
   const syncHistoryFull = useCallback(async () => {
     const currentConversations = useUIStore.getState().conversations;
 
-    // Load full conversation data from IndexedDB and convert to history format
     const localHistories: ConversationHistory[] = [];
 
     for (const conv of Object.values(currentConversations)) {
@@ -327,7 +310,6 @@ export function useHistory() {
 
     const syncResponse = await response.json();
 
-    // Merge server conversations with local state
     const mergedConversations: Record<string, Conversation> = { ...currentConversations };
 
     syncResponse.conversations.forEach((history: ConversationHistory) => {
@@ -436,7 +418,6 @@ export function useHistory() {
       // Then delete from local store
       deleteConversation(conversationId);
     } catch (error) {
-      console.error('Failed to delete conversation:', error);
       throw error;
     }
   }, [deleteHistoryItem, deleteConversation]);
@@ -460,7 +441,6 @@ export function useHistory() {
       localHashesRef.current.clear();
 
     } catch (error) {
-      console.error('Failed to delete all history:', error);
       throw error;
     }
   }, [deleteHistoryItem]);
@@ -477,8 +457,6 @@ export function useHistory() {
   };
 }
 
-// Auto-sync hook - syncs on interval and visibility change
-// Now uses smart debouncing to avoid syncing during active conversations
 export function useAutoSync(intervalMs: number = 60000) {
   const { syncHistory, syncStatus } = useHistory();
   const lastActivityRef = useRef<number>(Date.now());
@@ -499,7 +477,6 @@ export function useAutoSync(intervalMs: number = 60000) {
     // Don't sync if user was active very recently (within 5 seconds)
     const timeSinceActivity = Date.now() - lastActivityRef.current;
     if (timeSinceActivity < 5000) {
-      console.log('[AutoSync] Skipping - recent activity');
       return;
     }
 
@@ -512,7 +489,6 @@ export function useAutoSync(intervalMs: number = 60000) {
     const hasStreaming = activeConv?.messages?.some(m => m.streaming) ?? false;
 
     if (hasStreaming) {
-      console.log('[AutoSync] Skipping - streaming in progress');
       return;
     }
 
@@ -520,7 +496,6 @@ export function useAutoSync(intervalMs: number = 60000) {
     try {
       await syncHistory();
     } catch (error) {
-      console.error('[AutoSync] Failed:', error);
     } finally {
       syncInProgressRef.current = false;
     }

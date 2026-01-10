@@ -1,12 +1,3 @@
-/**
- * Hook for editing messages and artifacts
- * 
- * This hook handles editing operations that need to:
- * 1. Update IndexedDB (source of truth for messages)
- * 2. Update Zustand state (for reactivity)
- * 3. Trigger sync to server
- */
-
 import { useCallback } from 'react';
 import { useUIStore, useActiveConversationId } from '@/store';
 import {
@@ -18,10 +9,6 @@ import {
 export function useMessageEditor() {
   const activeConversationId = useActiveConversationId();
 
-  /**
-   * Edit a message's content
-   * Updates both IndexedDB and Zustand state
-   */
   const editMessage = useCallback(async (messageId: string, newContent: string): Promise<boolean> => {
     if (!activeConversationId) {
       console.error('[MessageEditor] No active conversation');
@@ -32,12 +19,10 @@ export function useMessageEditor() {
       // 1. Update IndexedDB (source of truth)
       const updatedConv = await editMessageInDB(activeConversationId, messageId, newContent);
       if (!updatedConv) {
-        console.error('[MessageEditor] Failed to update message in IndexedDB');
         return false;
       }
 
       // 2. Update Zustand state for reactivity
-      // Only update the messages array in the active conversation
       useUIStore.setState((state) => {
         const conv = state.conversations[activeConversationId];
         if (!conv) return state;
@@ -54,18 +39,12 @@ export function useMessageEditor() {
         };
       });
 
-      console.log(`[MessageEditor] Successfully edited message ${messageId}`);
       return true;
     } catch (error) {
-      console.error('[MessageEditor] Error editing message:', error);
       return false;
     }
   }, [activeConversationId]);
 
-  /**
-   * Edit an artifact's code within a message by title
-   * Falls back to code matching if title is empty
-   */
   const editArtifact = useCallback(async (
     messageId: string,
     artifactTitle: string | undefined,
@@ -103,7 +82,6 @@ export function useMessageEditor() {
       }
 
       if (!updatedConv) {
-        console.error('[MessageEditor] Failed to update artifact in IndexedDB');
         return false;
       }
 
@@ -124,10 +102,8 @@ export function useMessageEditor() {
         };
       });
 
-      console.log(`[MessageEditor] Successfully edited artifact ${artifactTitle || '(untitled)'}`);
       return true;
     } catch (error) {
-      console.error('[MessageEditor] Error editing artifact:', error);
       return false;
     }
   }, [activeConversationId]);

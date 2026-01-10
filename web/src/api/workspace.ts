@@ -36,7 +36,6 @@ export const workspaceApi = {
           if (data.success && data.data?.status === 'running') {
             return;
           }
-          // If not running, attempt to start it
           if (data.success && data.data?.status !== 'running') {
             await fetch('/api/v1/tools/container', {
               method: 'POST',
@@ -49,7 +48,7 @@ export const workspaceApi = {
           }
         }
       } catch (e) {
-        console.warn('Container readiness check failed, retrying...', e);
+        // Retry silently
       }
       await new Promise(resolve => setTimeout(resolve, 2000));
     }
@@ -62,7 +61,6 @@ export const workspaceApi = {
       throw new Error('Failed to list files');
     }
     const data = await res.json() as ListFilesResponse;
-    // ensure files is an array, backend might return null if empty
     return data.files || [];
   },
 

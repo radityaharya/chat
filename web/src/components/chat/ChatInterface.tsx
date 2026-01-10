@@ -46,12 +46,11 @@ import { useConversationManager } from '@/hooks/useActiveConversation';
 
 export function ChatInterface() {
   const { sendMessage, regenerate, isStreaming, stopStreaming } = useSendMessage();
-  useAutoSaveArtifacts(isStreaming); // Auto-save artifacts
-  useAutoCd(); // Auto-cd to workspace
-  useConversationManager(); // Lazy-load conversation messages & save changes
+  useAutoSaveArtifacts(isStreaming);
+  useAutoCd();
+  useConversationManager();
   const navigate = useNavigate();
 
-  // Combined state hook - reduces from 15+ subscriptions to 1
   const {
     isHydrated,
     apiKey,
@@ -65,7 +64,7 @@ export function ChatInterface() {
     artifactsPanelOpen,
   } = useChatInterfaceState();
 
-  // Combined actions hook - stable references
+  // useChatInterface actions
   const {
     setApiKey,
     setSystemPrompt,
@@ -79,19 +78,16 @@ export function ChatInterface() {
     toggleArtifactsPanel,
   } = useChatInterfaceActions();
 
-  const { data: models, isLoading: _isLoadingModels } = useModels();
-  useConfig(); // Load user's saved default model from backend
+  const { data: models } = useModels();
+  useConfig();
   const { mutate: updateConfig } = useUpdateConfig();
-  // useSendMessage moved up
   const { data: authStatus, isLoading: isCheckingAuth } = useCheckAuth();
   const { syncHistory, loadHistory, syncStatus } = useHistory();
 
-  // Determine if we are starting with a specific message to highlight
   const startMessageId = typeof window !== 'undefined'
     ? new URLSearchParams(window.location.search).get('msg')
     : null;
 
-  // Mobile hooks
   useViewportHeight();
   const { isMobile, isDesktop } = useMobileDetect();
 
@@ -101,14 +97,12 @@ export function ChatInterface() {
   const [modelAlertOpen, setModelAlertOpen] = useState(false);
   const [systemPromptOpen, setSystemPromptOpen] = useState(false);
 
-  // Update sidebar state when switching between mobile/desktop
   useEffect(() => {
     if (!isMobile) {
       setSidebarOpen(true);
     }
   }, [isMobile]);
 
-  // Handle body scroll lock for mobile menu
   useEffect(() => {
     if (isMobile && sidebarOpen) {
       document.body.classList.add('mobile-menu-open');
@@ -120,84 +114,54 @@ export function ChatInterface() {
     };
   }, [isMobile, sidebarOpen]);
 
-  // Redirect to login if not authenticated (wait for auth check to complete)
   useEffect(() => {
     if (!isCheckingAuth && !apiKey && !authStatus?.authenticated) {
       navigate({ to: '/login' });
     }
   }, [apiKey, authStatus, isCheckingAuth, navigate]);
 
-  // Load history on initial authentication
   useEffect(() => {
     if (authStatus?.authenticated) {
-      // Always load history on mount to get latest data from server
-      loadHistory().catch((error) => {
-        console.error('Failed to load history:', error);
-      });
+      loadHistory().catch(() => { });
     }
-    // Only run once on mount when authentication status changes
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [authStatus?.authenticated]);
 
-  // Auto-sync every 2 minutes when authenticated
   useEffect(() => {
     if (!authStatus?.authenticated) return;
-
     const interval = setInterval(() => {
-      syncHistory().catch((error) => {
-        console.error('Auto-sync failed:', error);
-      });
-    }, 120000); // 2 minutes
-
+      syncHistory().catch(() => { });
+    }, 120000);
     return () => clearInterval(interval);
   }, [authStatus, syncHistory]);
 
-  // Debounced sync after streaming completes (3 seconds after streaming stops)
   useEffect(() => {
     if (!authStatus?.authenticated || messages.length === 0 || isStreaming) return;
-
     const timeoutId = setTimeout(() => {
-      syncHistory().catch((error) => {
-        console.error('Message sync failed:', error);
-      });
-    }, 3000); // 3 seconds debounce after streaming stops
-
+      syncHistory().catch(() => { });
+    }, 3000);
     return () => clearTimeout(timeoutId);
   }, [isStreaming, messages.length, authStatus, syncHistory]);
 
-  // Scroll to message from URL param (Search navigation)
   useEffect(() => {
     if (messages.length === 0) return;
-
     const params = new URLSearchParams(window.location.search);
     const msgId = params.get('msg');
-
     if (msgId) {
-      // Use polling to robustly find the element even if rendering is delayed
-      let attempts = 0;
-      const maxAttempts = 50; // 5 seconds max
       const intervalId = setInterval(() => {
         const element = document.getElementById(`message-${msgId}`);
         if (element) {
           element.scrollIntoView({ behavior: 'smooth', block: 'center' });
-          // Flash highlight
           element.classList.add('message-highlight');
           setTimeout(() => {
             element.classList.remove('message-highlight');
           }, 2000);
-          clearInterval(intervalId); // Found it, stop polling
-        }
-
-        attempts++;
-        if (attempts >= maxAttempts) {
-          clearInterval(intervalId); // Give up
+          clearInterval(intervalId);
         }
       }, 100);
-
       return () => clearInterval(intervalId);
     }
-  }, [messages, activeId]); // Run when messages load or conversation changes
-
+  }, [messages, activeId]);
 
   useEffect(() => {
     if (models && models.length > 0 && !selectedModel) {
@@ -205,22 +169,19 @@ export function ChatInterface() {
     }
   }, [models, selectedModel, setSelectedModel]);
 
-  // Process queue when not streaming
   useEffect(() => {
     if (!isStreaming && queue.length > 0 && selectedModel) {
       const nextItem = queue[0];
       setQueue((prev) => prev.slice(1));
-
       const processQueue = async () => {
         try {
           await sendMessage(nextItem.text, selectedModel, messages, systemPrompt, nextItem.files);
         } catch (e) {
-          console.error("Queue error", e);
+          // Silent fail
         }
       };
       processQueue();
     }
-    // CRITICAL: Don't include 'messages' or 'sendMessage' in deps - causes re-run on every chunk!
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isStreaming, queue.length, selectedModel, systemPrompt]);
 
@@ -229,17 +190,13 @@ export function ChatInterface() {
       setModelAlertOpen(true);
       return;
     }
-
     if (isStreaming) {
       setQueue((prev) => [...prev, { id: nanoid(), text: content, files: attachments }]);
       return;
     }
-
     try {
       await sendMessage(content, selectedModel, messages, systemPrompt, attachments);
-    } catch (error) {
-      console.error('Failed to send message:', error);
-    }
+    } catch (error) { }
   };
 
   const handleRemoveQueueItem = (id: string) => {
@@ -252,12 +209,9 @@ export function ChatInterface() {
       return;
     }
     if (isStreaming) return;
-
     try {
       await regenerate(id, selectedModel, messages, systemPrompt);
-    } catch (error) {
-      console.error('Failed to regenerate:', error);
-    }
+    } catch (error) { }
   };
 
   const handleDeleteMessage = (id: string) => {
@@ -276,12 +230,6 @@ export function ChatInterface() {
     const newId = forkConversation(id);
     if (newId) {
       setActiveConversation(newId);
-      // Route update is separate, but setActiveConversation updates store.
-      // The parent route component should probably detect change and navigate?
-      // Or we assume the store update is enough if we just re-render?
-      // Wait, if we are at /c/123 and fork to newId (456), store has 456.
-      // But URL is still /c/123.
-      // We should navigate.
       navigate({ to: `/c/${newId}` });
     }
   };
@@ -300,8 +248,6 @@ export function ChatInterface() {
     }
   };
 
-  // Show loading skeleton while store is hydrating from IndexedDB
-  // This prevents the flash of empty content when navigating directly to a conversation
   if (!isHydrated) {
     return <ChatLoadingSkeleton />;
   }
@@ -315,7 +261,6 @@ export function ChatInterface() {
       className="bg-terminal-bg text-terminal-text font-mono flex overflow-hidden"
       style={{ height: 'calc(var(--vh, 1vh) * 100)' }}
     >
-      {/* Mobile Backdrop */}
       {isMobile && (
         <div
           className={`mobile-backdrop backdrop-transition ${sidebarOpen ? 'active' : ''}`}
@@ -323,7 +268,6 @@ export function ChatInterface() {
         />
       )}
 
-      {/* Sidebar */}
       <ChatSidebar
         isOpen={sidebarOpen}
         onClose={handleCloseSidebar}
@@ -334,7 +278,6 @@ export function ChatInterface() {
       />
 
       <div className="flex-1 flex flex-col min-w-0">
-        {/* Header */}
         <header className="bg-terminal-surface border-b border-terminal-border px-3 sm:px-4 py-2 sm:py-3 shrink-0 z-10">
           <div className="flex items-center justify-between max-w-4xl mx-auto w-full">
             <div className="flex items-center gap-2 overflow-hidden min-w-0">
@@ -349,7 +292,6 @@ export function ChatInterface() {
               </Button>
               <TypewriterTitle title={activeId && conversations[activeId] ? conversations[activeId].title : 'Chat'} />
 
-              {/* Sync Status Indicator */}
               {authStatus?.authenticated && activeId && conversations[activeId] && (
                 <div
                   className="flex items-center gap-1 text-xs text-terminal-muted shrink-0 ml-1"
@@ -390,10 +332,8 @@ export function ChatInterface() {
           </div>
         </header>
 
-
-        {/* Chat Messages */}
         <Conversation
-          key={activeId} // CRITICAL: Reset scroll state when conversation changes
+          key={activeId}
           className="flex-1 bg-terminal-bg"
           initial={startMessageId ? false : "smooth"}
         >
@@ -435,7 +375,6 @@ export function ChatInterface() {
           <ConversationScrollButton className="bg-terminal-surface border-terminal-border hover:bg-terminal-border text-terminal-text" />
         </Conversation>
 
-        {/* Input Area */}
         <footer className="bg-terminal-bg px-2 py-2 sm:px-4 sm:py-3 shrink-0 safe-bottom z-10">
           <div className="max-w-4xl mx-auto">
             <ChatInput
@@ -461,14 +400,12 @@ export function ChatInterface() {
         </footer>
       </div>
 
-      {/* Artifacts Panel - Desktop (1024px+) */}
       {artifactsPanelOpen && isDesktop && (
         <div className="h-full border-l border-terminal-border bg-terminal-bg relative z-10 w-80 xl:w-96 shrink-0 overflow-hidden">
           <ArtifactsPanel />
         </div>
       )}
 
-      {/* Artifacts Panel - Mobile/Tablet Sheet (< 1024px) */}
       <Sheet open={artifactsPanelOpen && !isDesktop} onOpenChange={toggleArtifactsPanel}>
         <SheetContent side="right" className="w-screen sm:w-[400px] p-0 border-l border-terminal-border bg-terminal-bg text-terminal-text">
           <ArtifactsPanel />
@@ -543,13 +480,11 @@ function TypewriterTitle({ title }: { title: string }) {
   const [displayTitle, setDisplayTitle] = useState(title);
 
   useEffect(() => {
-    // If title is short (like 'Chat' or 'New Chat') or empty, just show it immediately
     if (title.length < 10 || title === 'Chat' || title === 'New Chat') {
       setDisplayTitle(title);
       return;
     }
 
-    // Reset to empty start for animation
     setDisplayTitle('');
 
     let i = 0;
@@ -560,7 +495,7 @@ function TypewriterTitle({ title }: { title: string }) {
       }
       setDisplayTitle(title.slice(0, i + 1));
       i++;
-    }, 30); // 30ms per char
+    }, 30);
 
     return () => clearInterval(intervalId);
   }, [title]);

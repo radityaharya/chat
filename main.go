@@ -2,7 +2,6 @@ package main
 
 import (
 	"fmt"
-	"log"
 	"net/http"
 	"os"
 	"os/signal"
@@ -68,35 +67,15 @@ func main() {
 		logger.Info("Geoapify API key override applied from command line")
 	}
 
-	// If using a generated key, print a helpful message
+	// If using a generated key, log it through the logger
 	if cfg.UseGeneratedKey {
-		fmt.Printf(`
-Your LLM-Router endpoint will be exposed publicly so that Cursor's servers can invoke it.
-A strong API key is highly recommended to prevent others from consuming your resources.
-
-You may specify the API key via:
-- Environment variable: export %s=your_api_key
-- Command line flag: --llmrouter-api-key=your_api_key
-
-Since neither of those have been set, we've generated a unique key for this session:
-%s
-
-This is what you should set as your API key in Cursor.
-`, cfg.LLMRouterAPIKeyEnv, cfg.LLMRouterAPIKey)
+		logger.Warn("Generating a unique API key for this session (none provided)",
+			zap.String("api_key", cfg.LLMRouterAPIKey),
+			zap.String("env_var", cfg.LLMRouterAPIKeyEnv))
 	}
 
-	// Log configured backends (using fmt.Printf so it always shows)
-	fmt.Printf("\n=== Configured Backends (%d) ===\n", len(cfg.Backends))
-	for i, backend := range cfg.Backends {
-		fmt.Printf("  %d. %s\n", i+1, backend.Name)
-		fmt.Printf("     URL: %s\n", backend.BaseURL)
-		fmt.Printf("     Prefix: %s\n", backend.Prefix)
-		fmt.Printf("     Requires API Key: %v\n", backend.RequireAPIKey)
-		if backend.Default {
-			fmt.Printf("     Default: true\n")
-		}
-		fmt.Println()
-	}
+	// Log backend count
+	logger.Info("Backends initialized", zap.Int("count", len(cfg.Backends)))
 
 	// Initialize proxies based on the loaded configuration
 	proxy.InitializeProxies(cfg.Backends, logger)
@@ -181,8 +160,8 @@ This is what you should set as your API key in Cursor.
 
 	// Start the server
 	addr := fmt.Sprintf(":%d", cfg.ListeningPort)
-	log.Printf("Starting server on %s", addr)
+	logger.Info("Starting server", zap.String("address", addr))
 	if err := http.ListenAndServe(addr, nil); err != nil {
-		log.Fatalf("Failed to start server: %s", err)
+		logger.Fatal("Failed to start server", zap.Error(err))
 	}
 }
