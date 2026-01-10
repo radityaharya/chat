@@ -33,6 +33,7 @@ import {
   PromptInputCommandEmpty,
   PromptInputCommandGroup,
   PromptInputCommandItem,
+  PromptInputHeader,
 } from '@/components/ai-elements/prompt-input';
 import {
   Popover,
@@ -250,6 +251,18 @@ export function ChatInput({
           </PromptInputQuote>
         )}
 
+        <div className="sm:hidden w-full">
+          <PromptInputHeader>
+            <ModelSelector
+              models={models}
+              selectedModel={selectedModel}
+              onSelectModel={onSelectModel}
+              disabled={disabled}
+              className=''
+            />
+          </PromptInputHeader>
+        </div>
+
         <PromptInputBody className="px-2 sm:px-3 pt-2 bg-terminal-surface">
           <PromptInputAttachments>
             {(attachment) => <PromptInputAttachment data={attachment} />}
@@ -358,13 +371,14 @@ export function ChatInput({
               </PopoverContent>
             </Popover>
 
-            <ModelSelector
-              models={models}
-              selectedModel={selectedModel}
-              onSelectModel={onSelectModel}
-              disabled={disabled}
-            />
-
+            <div className="hidden sm:block">
+              <ModelSelector
+                models={models}
+                selectedModel={selectedModel}
+                onSelectModel={onSelectModel}
+                disabled={disabled}
+              />
+            </div>
 
           </PromptInputTools>
 

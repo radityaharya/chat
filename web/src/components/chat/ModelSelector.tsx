@@ -34,6 +34,7 @@ interface ModelSelectorProps {
   selectedModel: string | null;
   onSelectModel: (modelId: string) => void;
   disabled?: boolean;
+  className?: string;
 }
 
 type SortOption = 'default' | 'name' | 'price-asc' | 'price-desc' | 'context-asc' | 'context-desc';
@@ -70,6 +71,7 @@ export function ModelSelector({
   selectedModel,
   onSelectModel,
   disabled,
+  className,
 }: ModelSelectorProps) {
   const [open, setOpen] = useState(false);
   const [sortBy, setSortBy] = useState<SortOption>('default');
@@ -124,7 +126,7 @@ export function ModelSelector({
 
   return (
     <Selector open={open} onOpenChange={setOpen}>
-      <ModelSelectorTrigger asChild className='w-[300px]'>
+      <ModelSelectorTrigger asChild className={cn('sm:w-[300px]', className)}>
         <Button
           variant="link"
           role="combobox"
